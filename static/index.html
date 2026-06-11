@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Atlas Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-container">
+        <div class="sidebar-left">
+            <div class="sidebar-header">
+                <img src="https://ui-avatars.com/api/?name=Atlas&background=25D366&color=fff" alt="Perfil" class="avatar">
+                <div class="header-actions">
+                    <button class="icon-btn" onclick="toggleNewChat()"><i class="fas fa-plus"></i></button>
+                    <button class="icon-btn"><i class="fas fa-ellipsis-v"></i></button>
+                </div>
+            </div>
+            <div class="search-bar-container" id="newChatContainer" style="display: none;">
+                <div class="search-bar">
+                    <i class="fas fa-search"></i>
+                    <input type="text" id="newChatInput" placeholder="Digite o número (ex: 554199999999)">
+                </div>
+                <button onclick="startNewChat()" class="icon-btn"><i class="fas fa-paper-plane"></i></button>
+            </div>
+            <div class="search-bar-container">
+                <div class="search-bar">
+                    <i class="fas fa-search"></i>
+                    <input type="text" id="searchInput" placeholder="Pesquisar conversas...">
+                </div>
+            </div>
+            <div class="chat-list" id="chatList"></div>
+        </div>
+        <div class="main-chat" id="mainChat" style="display: none;">
+            <div class="chat-header">
+                <div class="chat-header-info">
+                    <img src="https://ui-avatars.com/api/?name=User&background=random" alt="Contato" class="avatar" id="currentChatAvatar">
+                    <h2 id="currentChatName">Nome do Contato</h2>
+                </div>
+                <div class="header-actions">
+                    <button class="icon-btn" onclick="toggleAdminPanel()"><i class="fas fa-lock"></i></button>
+                </div>
+            </div>
+            <div class="chat-messages" id="chatMessages"></div>
+            <div class="chat-input-container">
+                <button class="icon-btn" id="emojiBtn"><i class="far fa-smile"></i></button>
+                <button class="icon-btn" id="attachBtn"><i class="fas fa-paperclip"></i></button>
+                <input type="file" id="mediaInput" multiple hidden>
+                <div id="emojiPickerContainer" style="display:none; position:absolute; bottom: 60px; z-index: 1000;">
+                    <emoji-picker></emoji-picker>
+                </div>
+                <input type="text" id="messageInput" placeholder="Digite uma mensagem">
+                <button class="icon-btn" onclick="sendMessage()"><i class="fas fa-paper-plane"></i></button>
+            </div>
+        </div>
+        <div class="empty-chat" id="emptyChat">
+            <img src="https://cdn-icons-png.flaticon.com/512/1041/1041916.png" width="120" style="opacity: 0.5;">
+            <h1>Atlas Web</h1>
+            <p>Selecione uma conversa para começar a enviar mensagens.</p>
+        </div>
+        <div class="sidebar-right" id="adminPanel">
+            <div class="admin-header">
+                <h2>Painel Mestre <i class="fas fa-shield-alt"></i></h2>
+                <button class="icon-btn" onclick="toggleAdminPanel()"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="admin-content">
+                <h3>Gerenciar Master Admins <i class='fas fa-crown' style='color: gold;'></i></h3>
+                <div class="admin-list" id="masterAdminList"></div>
+                <div class="add-admin">
+                    <input type="text" id="newMasterAdminInput" placeholder="Novo número (ex: 5541...)">
+                    <button onclick="addMasterAdmin()" class="btn-primary">Adicionar</button>
+                </div>
+                <hr style="border-color: var(--border-color); margin: 20px 0;">
+                <h3>Gerenciar Admins Padrão</h3>
+                <div class="admin-list" id="adminList"></div>
+                <div class="add-admin">
+                    <input type="text" id="newAdminInput" placeholder="Novo número (ex: 5541...)">
+                    <button onclick="addAdmin()" class="btn-primary">Adicionar</button>
+                </div>
+                <hr style="border-color: var(--border-color); margin: 20px 0;">
+                <h3>Credenciais (.env)</h3>
+                <textarea id="envEditor" rows="15"></textarea>
+                <button onclick="saveEnv()" class="btn-primary" style="width: 100%; margin-top: 10px;">Salvar .env</button>
+            </div>
+        </div>
+    </div>
+    <script type="module" src="https://cdn.jsdelivr.net/npm/emoji-picker-element@1/index.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

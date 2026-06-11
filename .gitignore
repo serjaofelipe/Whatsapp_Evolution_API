@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.env
+evolution_db_data/
+evolution_redis_data/
+evolution_instances/
+evolution_database/
+node_modules/
+temp_media/
+logs/
+*.log

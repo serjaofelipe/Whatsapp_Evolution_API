@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+python-dotenv
+httpx
+aiofiles
+pyautogui
+opencv-python
+psutil
+groq
+google-generativeai
+speedtest-cli
+requests
+python-multipart
