@@ -24,10 +24,10 @@ if errorlevel 1 (
 echo.
 echo Aguardando o motor do Docker inicializar...
 :LOOP_DOCKER
-timeout /t 3 /nobreak >nul
+ping 127.0.0.1 -n 4 > nul
 docker info >nul 2>&1
 if %errorlevel% neq 0 (
-    echo ...ainda aguardando o Docker iniciar (se demorar, abra-o manualmente)...
+    echo ...ainda aguardando o Docker iniciar - se demorar abra manualmente...
     goto LOOP_DOCKER
 )
 
@@ -35,43 +35,38 @@ echo.
 echo ==============================================
 echo [2/4] Docker ativo! Subindo os containers...
 echo ==============================================
-:: Vai para a pasta raiz onde o script .bat esta localizado
 cd /d "%~dp0"
 
 :: Tenta rodar docker-compose (ou docker compose)
 docker-compose up -d >nul 2>&1
 if %errorlevel% neq 0 (
-    echo "docker-compose" falhou, tentando "docker compose"...
+    echo Comando docker-compose falhou, tentando docker compose...
     docker compose up -d
 ) else (
-    echo Containers iniciados/verificados com sucesso!
+    echo Containers iniciados ou atualizados com sucesso!
 )
 
 echo.
 echo ==============================================
 echo [3/4] Aguardando banco de dados e Evolution API...
 echo ==============================================
-:: Espera 10 segundos para dar tempo dos containers subirem e estabilizarem
-timeout /t 10 /nobreak
+ping 127.0.0.1 -n 10 > nul
 
 echo.
 echo ==============================================
 echo [4/4] Iniciando o Gateway do WhatsApp...
 echo ==============================================
-:: Verifica se o Python esta instalado no sistema
 python --version >nul 2>&1
 if %errorlevel% neq 0 (
     echo ERRO: Python nao encontrado no sistema!
-    echo Certifique-se de que o Python esta instalado e marcado na opcao "Add Python to PATH" durante a instalacao.
+    echo Certifique-se de que o Python esta instalado e no PATH.
     pause
     exit /b
 )
 
-:: Verifica dependencias
 echo Verificando dependencias basicas...
 pip install -r requirements.txt >nul 2>&1
 
-:: Executa o bot principal
 echo Tudo pronto! Iniciando o servidor...
 echo ==============================================
 python main.py
