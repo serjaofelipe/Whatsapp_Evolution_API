@@ -179,11 +179,24 @@ async def process_whatsbot_command(remote_jid: str, text: str) -> bool:
         elif comando_base == '/cmd':
             if argumento:
                 try:
-                    resultado = subprocess.check_output(argumento, shell=True, text=True, stderr=subprocess.STDOUT)
+                    out_bytes = subprocess.check_output(argumento, shell=True, stderr=subprocess.STDOUT)
+                    try:
+                        resultado = out_bytes.decode('cp850')
+                    except UnicodeDecodeError:
+                        try:
+                            resultado = out_bytes.decode('utf-8')
+                        except UnicodeDecodeError:
+                            resultado = out_bytes.decode('cp1252', errors='replace')
+                            
                     if len(resultado) > 4000: resultado = resultado[:4000] + "\n...[Cortado]"
                     await send_text_message(remote_jid, f"💻 *Resultado:*\n```\n{resultado}\n```")
                 except subprocess.CalledProcessError as e:
-                    await send_text_message(remote_jid, f"⚠️ *Erro:*\n```\n{e.output}\n```")
+                    out_bytes = e.output
+                    try:
+                        resultado = out_bytes.decode('cp850')
+                    except:
+                        resultado = out_bytes.decode('utf-8', errors='replace')
+                    await send_text_message(remote_jid, f"⚠️ *Erro:*\n```\n{resultado}\n```")
             else:
                 await send_text_message(remote_jid, "🖥️ Use: /cmd <comando>")
 

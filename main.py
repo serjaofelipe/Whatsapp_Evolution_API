@@ -19,9 +19,53 @@ from datetime import datetime
 from pathlib import Path
 from contextlib import asynccontextmanager
 
-# Corrige erro de subprocesso no Windows
-if sys.platform == "win32":
-    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+import secrets
+from dotenv import load_dotenv
+
+# Auto-geração do .env antes das importações locais
+BASE_DIR = Path(__file__).resolve().parent
+env_path = BASE_DIR / ".env"
+if not env_path.exists():
+    new_key = secrets.token_hex(16).upper()
+    default_env = f"""# ==========================================
+# GERAÇÃO AUTOMÁTICA DE AMBIENTE (Template)
+# ==========================================
+
+# Evolution API
+SERVER_PORT=8000
+EVOLUTION_API_URL=http://localhost:8080
+INSTANCE_NAME=Atlas
+AUTHENTICATION_API_KEY={new_key}
+GLOBAL_API_KEY={new_key}
+
+# WhatsApp Admins
+ADMIN_NUMBERS=
+ADMIN_MASTER_NUMBERS=
+
+# LLM APIs
+GROQ_API_KEY=
+GOOGLE_API_KEY=
+"""
+    with open(env_path, "w", encoding="utf-8") as f:
+        f.write(default_env)
+    print("\n" + "="*50)
+    print("✅ ARQUIVO .env GERADO AUTOMATICAMENTE!")
+    print(f"🔑 Evolution API Key: {new_key}")
+    
+    print("🔄 Reiniciando container da Evolution API para aplicar a chave...")
+    import subprocess
+    try:
+        subprocess.run(["docker-compose", "down"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(["docker-compose", "up", "-d"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        print("✅ Docker reiniciado com sucesso com a nova chave!")
+    except Exception as e:
+        print(f"⚠️ Aviso: Não foi possível reiniciar o Docker automaticamente: {e}")
+        print("   Por favor, abra outro terminal e rode manualmente:")
+        print("   docker-compose down")
+        print("   docker-compose up -d")
+    print("="*50 + "\n")
+
+load_dotenv()
 
 from fastapi import FastAPI, Request, BackgroundTasks
 from fastapi.responses import HTMLResponse
@@ -30,7 +74,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import uvicorn
 import aiofiles
-from dotenv import load_dotenv
 
 from evolution_api_client import (
     send_text_message, download_media_message,
@@ -39,8 +82,6 @@ from evolution_api_client import (
 from assistant import process_assistant_request, get_groq_client
 from whatsbot import process_whatsbot_command
 from dashboard_api import router as dashboard_router
-
-load_dotenv()
 
 
 # ================= CONFIGURAÇÕES =================
@@ -126,9 +167,15 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 async def dashboard_page(request: Request):
     return HTMLResponse(content=open(static_dir / "index.html", encoding="utf-8").read())
 
+from fastapi import Response
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return Response(status_code=204)
+
 @app.get("/qrcode", response_class=HTMLResponse)
 async def qrcode_page(request: Request):
-    return templates.TemplateResponse("qrcode.html", {"request": request})
+    return templates.TemplateResponse(request=request, name="qrcode.html", context={"request": request})
 
 @app.get("/api/qr")
 async def get_qr():

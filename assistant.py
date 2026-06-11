@@ -35,15 +35,25 @@ def execute_system_command(command: str) -> str:
         if SISTEMA == "Windows":
             result = subprocess.run(
                 ["powershell", "-Command", command],
-                capture_output=True, text=True, timeout=120
+                capture_output=True, timeout=120
             )
         else:
             result = subprocess.run(
                 ["bash", "-c", command],
-                capture_output=True, text=True, timeout=120
+                capture_output=True, timeout=120
             )
-        output = result.stdout.strip()
-        err = result.stderr.strip()
+            
+        # Tenta decodificar de forma robusta (CP850 > UTF-8 > Fallback)
+        def robust_decode(b):
+            if not b: return ""
+            try: return b.decode('cp850')
+            except: 
+                try: return b.decode('utf-8')
+                except: return b.decode('cp1252', errors='replace')
+                
+        output = robust_decode(result.stdout).strip()
+        err = robust_decode(result.stderr).strip()
+        
         if len(output) > 1000: output = output[:1000] + "\n...[TRUNCADO]"
         if len(err) > 1000: err = err[:1000] + "\n...[TRUNCADO]"
         if err: return f"Comando executado com alertas:\n{err}\n{output}"
