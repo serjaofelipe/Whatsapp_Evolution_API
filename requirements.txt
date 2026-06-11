@@ -3,6 +3,7 @@ uvicorn[standard]
 python-dotenv
 httpx
 aiofiles
+Pillow
 pyautogui
 opencv-python
 psutil

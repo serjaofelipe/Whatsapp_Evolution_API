@@ -95,7 +95,7 @@ ADMIN_NUMBERS_ENV = os.getenv("ADMIN_NUMBERS", "")
 ADMIN_NUMBERS = [n.strip() for n in ADMIN_NUMBERS_ENV.split(",") if n.strip()]
 
 ADMIN_MASTER_NUMBERS_ENV = os.getenv("ADMIN_MASTER_NUMBERS", "")
-ADMIN_MASTER_NUMBERS = [n.strip() for n in ADMIN_MASTER_NUMBERS_ENV.split(",") if n.strip()]
+ADMIN_MASTER_NUMBERS = list(set([n.strip() for n in ADMIN_MASTER_NUMBERS_ENV.split(",") if n.strip()]))
 
 # Junta todos os admins em uma lista única para verificação
 ALL_ADMINS = list(set(ADMIN_NUMBERS + ADMIN_MASTER_NUMBERS))
@@ -460,8 +460,16 @@ async def evolution_webhook(request: Request, background_tasks: BackgroundTasks,
         image_caption = message_info.get("imageMessage", {}).get("caption")
         temp_text = conversation or extended_text or image_caption or ""
 
-        # Ignora mensagens enviadas por nós mesmos, a menos que seja um comando explícito
+        # Ignora mensagens enviadas por nós mesmos (fromMe=True) para outras pessoas
         if data.get("key", {}).get("fromMe"):
+            # O remote_jid aqui é quem está *recebendo* a nossa mensagem.
+            # Só processamos comandos se estivermos mandando mensagem para nós mesmos (ou para outro admin).
+            # Para isso extraímos o número limpo do remote_jid e checamos se está na lista de admins.
+            # Assim, se mandarmos um comando num chat qualquer, o bot ignora e não responde naquele chat.
+            temp_remote_jid = data.get("key", {}).get("remoteJid", "")
+            temp_clean_number = ''.join(filter(str.isdigit, temp_remote_jid))
+            if not any(admin in temp_clean_number for admin in ALL_ADMINS):
+                return {"status": "ignored", "reason": "outgoing_to_non_admin"}
             if not temp_text.strip().startswith("/"):
                 return {"status": "ignored", "reason": "from_me_not_command"}
 
@@ -536,9 +544,8 @@ async def evolution_webhook(request: Request, background_tasks: BackgroundTasks,
                 print(f"[TIMEOUT] Mensagem ignorada ({diff}s atrás). Remetente: {clean_number}")
                 return {"status": "ignored", "reason": "message_too_old"}
 
-        # Verifica se é admin (ou se a mensagem foi enviada por nós mesmos)
-        is_from_me = data.get("key", {}).get("fromMe", False)
-        is_admin = is_from_me or any(admin in clean_number for admin in ALL_ADMINS)
+        # Verifica se o remetente (ou destinatário no caso de fromMe=True) é um admin
+        is_admin = any(admin in clean_number for admin in ALL_ADMINS)
 
         # Se não for admin, envia mensagem padrão (personalize aqui!)
         if not is_admin and not is_group:
@@ -551,6 +558,16 @@ async def evolution_webhook(request: Request, background_tasks: BackgroundTasks,
         # Ignora grupos
         if is_group:
             return {"status": "success"}
+
+        if msg_text and "/video" in msg_text.lower():
+            print(f"[ROTEAMENTO] Comando de Vídeo Desktop solicitado por {clean_number}.")
+            from tools.desktop_call import iniciar_chamada_desktop
+            background_tasks.add_task(iniciar_chamada_desktop, clean_number)
+            
+            # Remove o comando /video do texto para que o restante (ex: "crie um site") seja processado
+            msg_text = re.sub(r'(?i)/video\s*', '', msg_text).strip()
+            if not msg_text and not img_path:
+                return {"status": "success", "reason": "desktop_video_call"}
 
         # Processa mensagem de admin em paralelo
         async def background_admin(r_jid, text_content, initial_img, msg_id_val, m_info, c_clean):
