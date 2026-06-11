@@ -378,9 +378,16 @@ async def evolution_webhook(request: Request, background_tasks: BackgroundTasks,
         data = payload.get("data", {})
         message_info = data.get("message", {})
 
-        # Ignora mensagens enviadas por nós mesmos
+        # Extrai texto antecipadamente para checar se é um comando
+        conversation = message_info.get("conversation")
+        extended_text = message_info.get("extendedTextMessage", {}).get("text")
+        image_caption = message_info.get("imageMessage", {}).get("caption")
+        temp_text = conversation or extended_text or image_caption or ""
+
+        # Ignora mensagens enviadas por nós mesmos, a menos que seja um comando explícito
         if data.get("key", {}).get("fromMe"):
-            return {"status": "ignored", "reason": "from_me"}
+            if not temp_text.strip().startswith("/"):
+                return {"status": "ignored", "reason": "from_me_not_command"}
 
         message_id = data.get("key", {}).get("id")
 
