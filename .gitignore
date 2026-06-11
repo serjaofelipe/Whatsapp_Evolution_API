@@ -1,6 +1,6 @@
 __pycache__/
 *.pyc
-.env
+
 evolution_db_data/
 evolution_redis_data/
 evolution_instances/
