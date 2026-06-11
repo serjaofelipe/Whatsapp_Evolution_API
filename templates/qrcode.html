@@ -115,7 +115,7 @@
                 }
             } catch (err) {
                 console.error(err);
-                document.getElementById('status-text').innerText = 'Erro ao conectar à API (Evolution Offline?)';
+                document.getElementById('status-text').innerText = err.message || 'Erro ao conectar à API (Evolution Offline?)';
             }
         }
         async function fetchQR() {

@@ -190,6 +190,12 @@ async def get_qr():
         async with httpx.AsyncClient() as client:
             response = await client.get(url, headers=headers)
             data = response.json()
+            
+            if response.status_code == 401:
+                return {"error": "Chave da API Inválida (401)"}
+            if response.status_code == 404 or data.get("error") == "Not Found":
+                return {"error": "Instância não encontrada (Aguarde a criação automática...)"}
+                
             if data.get("base64"):
                 latest_qr_base64 = data.get("base64")
                 return {"base64": latest_qr_base64}
@@ -198,7 +204,7 @@ async def get_qr():
                 return {"base64": latest_qr_base64}
             return data
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": f"Erro QR: {str(e)}"}
 
 @app.get("/api/status")
 async def get_status():
@@ -208,9 +214,32 @@ async def get_status():
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(url, headers=headers)
-            return response.json()
+            data = response.json()
+            
+            # Se a instância não existir, cria automaticamente!
+            if response.status_code == 404 or data.get("error") == "Not Found":
+                create_url = f"{EVOLUTION_API_URL}/instance/create"
+                await client.post(create_url, json={"instanceName": INSTANCE_NAME, "integration": "WHATSAPP-BAILEYS"}, headers=headers)
+                
+                # Configura o webhook
+                webhook_url = f"{EVOLUTION_API_URL}/webhook/set/{INSTANCE_NAME}"
+                await client.post(webhook_url, json={
+                    "webhook": {
+                        "enabled": True,
+                        "url": "http://host.docker.internal:8000/webhook/evolution",
+                        "events": ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "QRCODE_UPDATED", "SEND_MESSAGE"]
+                    }
+                }, headers=headers)
+                
+                return {"state": "connecting"}
+            
+            # Se der erro de autenticação, avisa o frontend
+            if response.status_code == 401:
+                return {"error": "A chave da API (GLOBAL_API_KEY) no .env não confere com a do Docker. Rode 'docker-compose down' e 'docker-compose up -d' novamente."}
+                
+            return data
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": f"Erro de conexão com Evolution API: {str(e)}"}
 
 @app.post("/api/logout")
 async def logout_instance():
@@ -507,8 +536,9 @@ async def evolution_webhook(request: Request, background_tasks: BackgroundTasks,
                 print(f"[TIMEOUT] Mensagem ignorada ({diff}s atrás). Remetente: {clean_number}")
                 return {"status": "ignored", "reason": "message_too_old"}
 
-        # Verifica se é admin
-        is_admin = any(admin in clean_number for admin in ALL_ADMINS)
+        # Verifica se é admin (ou se a mensagem foi enviada por nós mesmos)
+        is_from_me = data.get("key", {}).get("fromMe", False)
+        is_admin = is_from_me or any(admin in clean_number for admin in ALL_ADMINS)
 
         # Se não for admin, envia mensagem padrão (personalize aqui!)
         if not is_admin and not is_group:
