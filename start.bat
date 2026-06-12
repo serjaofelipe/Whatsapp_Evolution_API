@@ -37,11 +37,11 @@ echo [2/4] Docker ativo! Subindo os containers...
 echo ==============================================
 cd /d "%~dp0"
 
-:: Tenta rodar docker-compose (ou docker compose)
-docker-compose up -d >nul 2>&1
+:: Tenta rodar docker compose (nova sintaxe)
+docker compose up -d
 if %errorlevel% neq 0 (
-    echo Comando docker-compose falhou, tentando docker compose...
-    docker compose up -d
+    echo Comando docker compose falhou, tentando docker-compose...
+    docker-compose up -d
 ) else (
     echo Containers iniciados ou atualizados com sucesso!
 )

@@ -130,7 +130,8 @@ async def lifespan(app: FastAPI):
         await asyncio.sleep(3)  # Espera a Evolution API estar pronta
         for admin in ADMIN_MASTER_NUMBERS:
             try:
-                await send_text_message(admin, "✅ *Atlas Template* está online e operacional!")
+                # await send_text_message(admin, "✅ *Atlas Template* está online e operacional!")
+                pass
             except Exception as e:
                 print(f"[Startup] Erro ao enviar mensagem para {admin}: {e}")
 
@@ -396,13 +397,21 @@ async def process_admin_message(remote_jid, text, img_path):
             return
 
         # 3. Tenta comandos hardcoded do WhatsBot (/code, /print, /foto, etc.)
-        if text and text.strip().startswith("/"):
+        is_gemini_explicit = text and text.strip().lower().startswith("/gemini")
+        if text and text.strip().startswith("/") and not is_gemini_explicit:
             handled = await process_whatsbot_command(remote_jid, text)
             if handled:
                 return
 
         # 4. Tudo o resto vai para o Assistente IA (Groq + Gemini)
-        await process_assistant_request(remote_jid, text=text, media_path=img_path)
+        if is_gemini_explicit:
+            query = re.sub(r'(?i)^/gemini\s*', '', text).strip()
+            if not query and not img_path:
+                await send_text_message(remote_jid, "Por favor, escreva sua pergunta após o comando /gemini.")
+                return
+            await process_assistant_request(remote_jid, text=query, media_path=img_path, force_gemini_turn=True)
+        else:
+            await process_assistant_request(remote_jid, text=text, media_path=img_path)
 
     except Exception as e:
         error_msg = str(e)

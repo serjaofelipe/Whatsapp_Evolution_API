@@ -305,6 +305,8 @@ SYSTEM_PROMPT = (
     "Você é o Atlas, um assistente virtual supremo que reside no computador local do usuário. "
     "Você controla o computador remotamente via WhatsApp usando suas ferramentas.\n"
     f"Sistema Operacional detectado: {SISTEMA}.\n"
+    "REGRA DE CONVERSA: Se o usuário disser apenas 'oi', 'tudo bem', ou fizer perguntas gerais, APENAS RESPONDA EM TEXTO. NÃO chame nenhuma ferramenta (como launch_game ou open_url) a menos que seja explicitamente pedido.\n"
+    "REGRA DE JOGOS: SÓ inicie jogos se o usuário PEDIR EXPLICITAMENTE para abrir um jogo (ex: 'abra o jogo X', 'jogue Y'). NÃO INICIE JOGOS ALEATORIAMENTE.\n"
     "REGRA DO TERMINAL STATELESS: A ferramenta `execute_system_command` abre e fecha o terminal "
     "a cada chamada. SEMPRE encadeie comandos com ';' (ex: 'cd /pasta ; ls').\n"
     "REGRA DA VISÃO: Para analisar a tela, use `analyze_computer_screen`. NUNCA use `run_dynamic_script` para isso.\n"
@@ -316,7 +318,7 @@ SYSTEM_PROMPT = (
 )
 
 
-async def process_assistant_request(remote_jid: str, text: Optional[str] = None, media_path: Optional[str] = None):
+async def process_assistant_request(remote_jid: str, text: Optional[str] = None, media_path: Optional[str] = None, force_gemini_turn: bool = False):
     """Processa uma requisição de chat com IA (Groq + Gemini fallback)."""
     global PENDING_FALLBACKS, GLOBAL_USE_GEMINI
 
@@ -327,7 +329,7 @@ async def process_assistant_request(remote_jid: str, text: Optional[str] = None,
 
     try:
         user_prompt = text or ""
-        force_gemini = GLOBAL_USE_GEMINI.get(remote_jid, False)
+        force_gemini = force_gemini_turn or GLOBAL_USE_GEMINI.get(remote_jid, False)
 
         # Verifica se está pendente de confirmação de fallback
         if remote_jid in PENDING_FALLBACKS:
