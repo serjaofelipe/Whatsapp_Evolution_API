@@ -1,10 +1,13 @@
 import json
 import os
 import aiofiles
+import asyncio
 from typing import Dict, List, Any
 
 HISTORY_FILE = "history.json"
 MAX_HISTORY_LEN = 20
+
+_state_lock = asyncio.Lock()
 
 async def load_history() -> Dict[str, List[Any]]:
     if not os.path.exists(HISTORY_FILE):
@@ -26,18 +29,20 @@ async def save_history(history: Dict[str, List[Any]]):
         print(f"[StateManager] Erro ao salvar historico: {e}")
 
 async def get_messages(remote_jid: str) -> List[Any]:
-    history = await load_history()
-    return history.get(remote_jid, [])
+    async with _state_lock:
+        history = await load_history()
+        return history.get(remote_jid, [])
 
 async def set_messages(remote_jid: str, messages: List[Any]):
-    history = await load_history()
-    # Mantenha apenas os ultimos N itens para nao estourar o contexto/memoria
-    if len(messages) > MAX_HISTORY_LEN:
-        # Se tem system prompt no inicio, preserva o indice 0
-        if len(messages) > 0 and isinstance(messages[0], dict) and messages[0].get("role") == "system":
-            messages = [messages[0]] + messages[-(MAX_HISTORY_LEN-1):]
-        else:
-            messages = messages[-MAX_HISTORY_LEN:]
-            
-    history[remote_jid] = messages
-    await save_history(history)
+    async with _state_lock:
+        history = await load_history()
+        # Mantenha apenas os ultimos N itens para nao estourar o contexto/memoria
+        if len(messages) > MAX_HISTORY_LEN:
+            # Se tem system prompt no inicio, preserva o indice 0
+            if len(messages) > 0 and isinstance(messages[0], dict) and messages[0].get("role") == "system":
+                messages = [messages[0]] + messages[-(MAX_HISTORY_LEN-1):]
+            else:
+                messages = messages[-MAX_HISTORY_LEN:]
+                
+        history[remote_jid] = messages
+        await save_history(history)

@@ -521,7 +521,7 @@ async def process_assistant_request(remote_jid: str, text: Optional[str] = None,
                     })
                 await state_manager.set_messages(remote_jid, messages)
             else:
-                logger_ai.log_ai_usage(remote_jid, "Groq/Gemini", "Mensagem de Texto", f"Tamanho: {len(response_message.content or '')} chars")
+                await logger_ai.log_ai_usage(remote_jid, "Groq/Gemini", "Mensagem de Texto", f"Tamanho: {len(response_message.content or '')} chars")
                 if response_message.content:
                     await send_text_message(remote_jid, response_message.content)
                 await state_manager.set_messages(remote_jid, messages)

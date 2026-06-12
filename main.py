@@ -331,7 +331,7 @@ async def process_admin_message(remote_jid, text, img_path):
                     transcribed_text = str(transcription).strip()
                     print(f"🎤 [WHISPER] Áudio transcrito: '{transcribed_text}'")
                     
-                    logger_ai.log_ai_usage(remote_jid, "Whisper/Groq", "Transcrição de Áudio", f"Tamanho arquivo: {os.path.getsize(img_path)} bytes")
+                    await logger_ai.log_ai_usage(remote_jid, "Whisper/Groq", "Transcrição de Áudio", f"Tamanho arquivo: {os.path.getsize(img_path)} bytes")
 
                     if not text or text.startswith("[Mídia"):
                         text = transcribed_text
