@@ -11,6 +11,7 @@ import subprocess
 import json
 import asyncio
 import re
+import unicodedata
 import platform
 from typing import Optional
 from pathlib import Path
@@ -33,10 +34,13 @@ SISTEMA = platform.system()
 
 def execute_system_command(command: str, is_confirmed: bool = False) -> str:
     """Executa um comando no terminal (PowerShell no Windows, bash no Mac)."""
-    print(f"[Assistant] Executando comando: {command}")
+    print(f"[OpenClaw] Executando comando: {command}")
     
     # Validação de Segurança
-    if re.search(r'(?i)\b(rm|del|format|shutdown|reboot)\b', command):
+    command_lower = command.lower()
+    destructive_list = ['rmdir', 'diskpart', 'mkfs', 'del ', 'format ', 'shutdown', 'reboot', 'erase ', 'rd ']
+    
+    if re.search(r'(?i)\b(rm|del|format|shutdown|reboot|rmdir|diskpart)\b', command) or any(cmd in command_lower for cmd in destructive_list):
         if not is_confirmed:
             return "Ação destrutiva detectada. Solicite confirmação ao usuário pelo WhatsApp (ex: 'Confirma que deseja rodar este comando perigoso?'). Se ele aprovar, chame novamente com is_confirmed=True."
 
@@ -82,9 +86,13 @@ def get_groq_client():
     return None
 
 
-def get_tools(user_prompt: str = "") -> list:
+def get_groq_tools(user_prompt: str = "") -> list:
     """Retorna todas as ferramentas disponíveis para o LLM."""
-    user_prompt_lower = user_prompt.lower()
+    
+    def remover_acentos(txt):
+        return ''.join(c for c in unicodedata.normalize('NFD', txt) if unicodedata.category(c) != 'Mn')
+    
+    user_prompt_lower = remover_acentos(user_prompt.lower())
     
     tools = [
         {
@@ -270,8 +278,11 @@ async def dispatch_tool_call(function_name: str, arguments: str, remote_jid: str
             return await asyncio.to_thread(execute_system_command, args.get("command", ""), args.get("is_confirmed", False))
         elif function_name == "run_dynamic_script":
             code = args.get("code", "")
-            if re.search(r'(?i)\b(os\.remove|shutil\.rmtree|os\.system\("rm|subprocess\.run\("shutdown)\b', code) and not args.get("is_confirmed", False):
-                return "Script detectado como destrutivo. Pergunte ao usuário pelo WhatsApp. Se ele confirmar, chame com is_confirmed=True."
+            code_lower = code.lower()
+            destructive_list = ['os.remove', 'shutil.rmtree', 'os.system("rm', 'subprocess.run("rm', 'subprocess.run("shutdown', 'os.system("shutdown', 'rm -rf']
+            
+            if (re.search(r'(?i)\b(os\.remove|shutil\.rmtree|os\.system\("rm|subprocess\.run\("shutdown|rm -rf)\b', code) or any(cmd in code_lower for cmd in destructive_list)) and not args.get("is_confirmed", False):
+                return "Script destrutivo detectado. Solicite confirmação."
             return await asyncio.to_thread(run_dynamic_script, code, args.get("project_name", "Script_Avulso"))
         elif function_name == "analyze_computer_screen":
             return await asyncio.to_thread(analyze_computer_screen, args.get("prompt", ""))
@@ -397,14 +408,14 @@ async def process_assistant_request(remote_jid: str, text: Optional[str] = None,
             if not user_prompt:
                 return
 
-            messages = state_manager.get_messages(remote_jid)
+            messages = await state_manager.get_messages(remote_jid)
             if not messages:
                 messages = [{"role": "system", "content": SYSTEM_PROMPT}]
                 
             messages.append({"role": "user", "content": user_prompt})
-            state_manager.set_messages(remote_jid, messages)
+            await state_manager.set_messages(remote_jid, messages)
 
-        tools = get_tools(user_prompt)
+        tools = get_groq_tools(user_prompt)
         max_turns = 15
 
         for turn in range(max_turns):
@@ -435,14 +446,11 @@ async def process_assistant_request(remote_jid: str, text: Optional[str] = None,
                     error_str = str(api_err)
                     if "429" in error_str or "rate_limit_exceeded" in error_str or "503" in error_str:
                         if not force_gemini:
+                            print("[OpenClaw] Rate Limit Groq atingido. Aguardando confirmação...")
                             PENDING_FALLBACKS[remote_jid] = messages
                             asyncio.create_task(cleanup_fallback(remote_jid))
-                            state_manager.set_messages(remote_jid, messages)
-                            await send_text_message(remote_jid,
-                                "⚠️ *Limite do Groq atingido.*\n\n"
-                                "Deseja trocar para o *Gemini Flash*?\n\n"
-                                "Digite *Y* para sim."
-                            )
+                            await state_manager.set_messages(remote_jid, messages)
+                            await send_text_message(remote_jid, "⚠️ *Alerta: Limite de uso do Groq atingido.*\n\nO servidor recusou a conexão temporariamente.\n\nDeseja que eu troque o cérebro para o **Gemini Flash** e continue seu projeto exatamente de onde parei?\n\nDigite *Y* para sim.")
                             return
 
                         # Fallback para Gemini
@@ -511,12 +519,12 @@ async def process_assistant_request(remote_jid: str, text: Optional[str] = None,
                         "name": function_name,
                         "content": tool_result,
                     })
-                state_manager.set_messages(remote_jid, messages)
+                await state_manager.set_messages(remote_jid, messages)
             else:
                 logger_ai.log_ai_usage(remote_jid, "Groq/Gemini", "Mensagem de Texto", f"Tamanho: {len(response_message.content or '')} chars")
                 if response_message.content:
                     await send_text_message(remote_jid, response_message.content)
-                state_manager.set_messages(remote_jid, messages)
+                await state_manager.set_messages(remote_jid, messages)
                 break
 
     except Exception as e:
