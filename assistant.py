@@ -10,6 +10,7 @@ import os
 import subprocess
 import json
 import asyncio
+import re
 import platform
 from typing import Optional
 from pathlib import Path
@@ -17,6 +18,8 @@ from groq import AsyncGroq
 from dotenv import load_dotenv
 
 from evolution_api_client import send_text_message
+import state_manager
+import logger_ai
 
 # Skills
 from skills.python_executor import run_dynamic_script
@@ -28,9 +31,15 @@ from skills.network_manager import get_geolocation_and_ip, run_network_diagnosti
 SISTEMA = platform.system()
 
 
-def execute_system_command(command: str) -> str:
+def execute_system_command(command: str, is_confirmed: bool = False) -> str:
     """Executa um comando no terminal (PowerShell no Windows, bash no Mac)."""
     print(f"[Assistant] Executando comando: {command}")
+    
+    # Validação de Segurança
+    if re.search(r'(?i)\b(rm|del|format|shutdown|reboot)\b', command):
+        if not is_confirmed:
+            return "Ação destrutiva detectada. Solicite confirmação ao usuário pelo WhatsApp (ex: 'Confirma que deseja rodar este comando perigoso?'). Se ele aprovar, chame novamente com is_confirmed=True."
+
     try:
         if SISTEMA == "Windows":
             result = subprocess.run(
@@ -73,9 +82,11 @@ def get_groq_client():
     return None
 
 
-def get_tools():
+def get_tools(user_prompt: str = "") -> list:
     """Retorna todas as ferramentas disponíveis para o LLM."""
-    return [
+    user_prompt_lower = user_prompt.lower()
+    
+    tools = [
         {
             "type": "function",
             "function": {
@@ -84,12 +95,16 @@ def get_tools():
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "command": {"type": "string", "description": "O comando a ser executado."}
+                        "command": {"type": "string", "description": "O comando a ser executado."},
+                        "is_confirmed": {"type": "boolean", "description": "Sete como true se o usuário confirmou a execução de um comando perigoso."}
                     },
                     "required": ["command"]
                 }
             }
-        },
+        }
+    ]
+    
+    script_tools = [
         {
             "type": "function",
             "function": {
@@ -99,12 +114,16 @@ def get_tools():
                     "type": "object",
                     "properties": {
                         "code": {"type": "string", "description": "Código Python completo."},
-                        "project_name": {"type": "string", "description": "Nome da pasta do projeto."}
+                        "project_name": {"type": "string", "description": "Nome da pasta do projeto."},
+                        "is_confirmed": {"type": "boolean", "description": "Sete como true se o usuário confirmou a execução."}
                     },
                     "required": ["code", "project_name"]
                 }
             }
-        },
+        }
+    ]
+    
+    general_tools = [
         {
             "type": "function",
             "function": {
@@ -231,6 +250,12 @@ def get_tools():
             }
         }
     ]
+    
+    final_tools = tools + general_tools
+    if any(kw in user_prompt_lower for kw in ["pc", "computador", "terminal", "script", "codigo", "sistema"]):
+        final_tools += script_tools
+        
+    return final_tools
 
 
 async def dispatch_tool_call(function_name: str, arguments: str, remote_jid: str = "") -> str:
@@ -242,9 +267,12 @@ async def dispatch_tool_call(function_name: str, arguments: str, remote_jid: str
 
     try:
         if function_name == "execute_system_command":
-            return await asyncio.to_thread(execute_system_command, args.get("command", ""))
+            return await asyncio.to_thread(execute_system_command, args.get("command", ""), args.get("is_confirmed", False))
         elif function_name == "run_dynamic_script":
-            return await asyncio.to_thread(run_dynamic_script, args.get("code", ""), args.get("project_name", "Script_Avulso"))
+            code = args.get("code", "")
+            if re.search(r'(?i)\b(os\.remove|shutil\.rmtree|os\.system\("rm|subprocess\.run\("shutdown)\b', code) and not args.get("is_confirmed", False):
+                return "Script detectado como destrutivo. Pergunte ao usuário pelo WhatsApp. Se ele confirmar, chame com is_confirmed=True."
+            return await asyncio.to_thread(run_dynamic_script, code, args.get("project_name", "Script_Avulso"))
         elif function_name == "analyze_computer_screen":
             return await asyncio.to_thread(analyze_computer_screen, args.get("prompt", ""))
         elif function_name == "write_to_file":
@@ -300,6 +328,12 @@ async def dispatch_tool_call(function_name: str, arguments: str, remote_jid: str
 
 PENDING_FALLBACKS = {}
 GLOBAL_USE_GEMINI = {}
+
+async def cleanup_fallback(remote_jid: str):
+    await asyncio.sleep(120)
+    if remote_jid in PENDING_FALLBACKS:
+        del PENDING_FALLBACKS[remote_jid]
+        print(f"[Fallback] TTL Expirado. Fallback limpo para {remote_jid}")
 
 SYSTEM_PROMPT = (
     "Você é o Atlas, um assistente virtual supremo que reside no computador local do usuário. "
@@ -363,12 +397,14 @@ async def process_assistant_request(remote_jid: str, text: Optional[str] = None,
             if not user_prompt:
                 return
 
-            messages = [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt}
-            ]
+            messages = state_manager.get_messages(remote_jid)
+            if not messages:
+                messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+                
+            messages.append({"role": "user", "content": user_prompt})
+            state_manager.set_messages(remote_jid, messages)
 
-        tools = get_tools()
+        tools = get_tools(user_prompt)
         max_turns = 15
 
         for turn in range(max_turns):
@@ -400,6 +436,8 @@ async def process_assistant_request(remote_jid: str, text: Optional[str] = None,
                     if "429" in error_str or "rate_limit_exceeded" in error_str or "503" in error_str:
                         if not force_gemini:
                             PENDING_FALLBACKS[remote_jid] = messages
+                            asyncio.create_task(cleanup_fallback(remote_jid))
+                            state_manager.set_messages(remote_jid, messages)
                             await send_text_message(remote_jid,
                                 "⚠️ *Limite do Groq atingido.*\n\n"
                                 "Deseja trocar para o *Gemini Flash*?\n\n"
@@ -465,6 +503,7 @@ async def process_assistant_request(remote_jid: str, text: Optional[str] = None,
             if tool_calls:
                 for tool_call in tool_calls:
                     function_name = tool_call.function.name
+                    logger_ai.log_ai_usage(remote_jid, "Groq/Gemini", "Chamou Tool", function_name)
                     tool_result = await dispatch_tool_call(function_name, tool_call.function.arguments, remote_jid)
                     messages.append({
                         "tool_call_id": tool_call.id,
@@ -472,14 +511,18 @@ async def process_assistant_request(remote_jid: str, text: Optional[str] = None,
                         "name": function_name,
                         "content": tool_result,
                     })
+                state_manager.set_messages(remote_jid, messages)
             else:
-                final_text = str(response_message.content) if response_message.content else "Processo concluído."
-                await send_text_message(remote_jid, final_text)
-                return
-
-        await send_text_message(remote_jid, "Limite máximo de execuções atingido.")
+                logger_ai.log_ai_usage(remote_jid, "Groq/Gemini", "Mensagem de Texto", f"Tamanho: {len(response_message.content or '')} chars")
+                if response_message.content:
+                    await send_text_message(remote_jid, response_message.content)
+                state_manager.set_messages(remote_jid, messages)
+                break
 
     except Exception as e:
         error_msg = str(e)
         print(f"[Assistant] Erro Crítico: {error_msg}")
-        await send_text_message(remote_jid, f"Erro crítico: {error_msg}")
+        if "connect" in error_msg.lower() or "timeout" in error_msg.lower() or "socket" in error_msg.lower():
+            await send_text_message(remote_jid, "⚠️ Ops, parece que estou com problemas de conexão e estou temporariamente offline. Tente novamente em alguns minutos!")
+        else:
+            await send_text_message(remote_jid, f"Erro crítico: {error_msg[:100]}...")

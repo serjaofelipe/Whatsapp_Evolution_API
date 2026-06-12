@@ -82,6 +82,7 @@ from evolution_api_client import (
 from assistant import process_assistant_request, get_groq_client
 from whatsbot import process_whatsbot_command
 from dashboard_api import router as dashboard_router
+import logger_ai
 
 
 # ================= CONFIGURAÇÕES =================
@@ -320,20 +321,27 @@ async def process_admin_message(remote_jid, text, img_path):
             groq_client = get_groq_client()
             if groq_client:
                 await send_text_message(remote_jid, "🎤 Ouvindo áudio com Whisper...")
-                with open(img_path, "rb") as f:
-                    transcription = await groq_client.audio.transcriptions.create(
-                        file=(img_path, f.read()),
-                        model="whisper-large-v3",
-                        response_format="text"
-                    )
-                transcribed_text = str(transcription).strip()
-                print(f"🎤 [WHISPER] Áudio transcrito: '{transcribed_text}'")
+                try:
+                    with open(img_path, "rb") as f:
+                        transcription = await groq_client.audio.transcriptions.create(
+                            file=(img_path, f.read()),
+                            model="whisper-large-v3",
+                            response_format="text"
+                        )
+                    transcribed_text = str(transcription).strip()
+                    print(f"🎤 [WHISPER] Áudio transcrito: '{transcribed_text}'")
+                    
+                    logger_ai.log_ai_usage(remote_jid, "Whisper/Groq", "Transcrição de Áudio", f"Tamanho arquivo: {os.path.getsize(img_path)} bytes")
 
-                if not text or text.startswith("[Mídia"):
-                    text = transcribed_text
-                else:
-                    text = f"{text}\n[Áudio transcrito: {transcribed_text}]"
-                img_path = None
+                    if not text or text.startswith("[Mídia"):
+                        text = transcribed_text
+                    else:
+                        text = f"{text}\n[Áudio transcrito: {transcribed_text}]"
+                    img_path = None
+                    lower_text = text.lower() if text else ""
+                except Exception as ex:
+                    print(f"[WHISPER] Erro ao transcrever: {ex}")
+                    await send_text_message(remote_jid, "⚠️ Erro ao tentar entender o áudio.")
 
         lower_text = text.lower() if text else ""
 
