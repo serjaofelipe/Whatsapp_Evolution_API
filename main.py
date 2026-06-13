@@ -19,6 +19,22 @@ from datetime import datetime
 from pathlib import Path
 from contextlib import asynccontextmanager
 
+# Corrige erro de subprocesso no Windows e desabilita o QuickEdit Mode do CMD
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+    try:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        STD_INPUT_HANDLE = -10
+        hStdIn = kernel32.GetStdHandle(STD_INPUT_HANDLE)
+        mode = ctypes.c_uint32()
+        kernel32.GetConsoleMode(hStdIn, ctypes.byref(mode))
+        ENABLE_QUICK_EDIT_MODE = 0x0040
+        new_mode = mode.value & ~ENABLE_QUICK_EDIT_MODE
+        kernel32.SetConsoleMode(hStdIn, new_mode)
+    except Exception as e:
+        print(f"Aviso: Nao foi possivel desabilitar o QuickEdit Mode: {e}")
+
 import secrets
 from dotenv import load_dotenv
 
