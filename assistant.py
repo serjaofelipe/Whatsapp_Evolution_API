@@ -511,7 +511,7 @@ async def process_assistant_request(remote_jid: str, text: Optional[str] = None,
             if tool_calls:
                 for tool_call in tool_calls:
                     function_name = tool_call.function.name
-                    logger_ai.log_ai_usage(remote_jid, "Groq/Gemini", "Chamou Tool", function_name)
+                    await logger_ai.log_ai_usage(remote_jid, "Groq/Gemini", "Chamou Tool", function_name)
                     tool_result = await dispatch_tool_call(function_name, tool_call.function.arguments, remote_jid)
                     messages.append({
                         "tool_call_id": tool_call.id,

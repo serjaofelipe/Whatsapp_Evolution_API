@@ -20,41 +20,14 @@ def _format_size(gb):
     if gb < 1: return f"{round(gb * 1024)} MB"
     return f"{gb} GB"
 
-def get_steam_libraries():
-    """Lê o libraryfolders.vdf do Steam para descobrir todas as bibliotecas instaladas."""
-    libraries = []
-    # O Steam geralmente fica no Program Files (x86) no Windows
-    base_steam_path = r"C:\Program Files (x86)\Steam"
-    vdf_path = os.path.join(base_steam_path, "steamapps", "libraryfolders.vdf")
-    
-    if os.path.exists(vdf_path):
-        try:
-            with open(vdf_path, "r", encoding="utf-8", errors="ignore") as f:
-                content = f.read()
-                # O formato do VDF tem caminhos como "path" "D:\\SteamLibrary"
-                paths = re.findall(r'"path"\s+"([^"]+)"', content)
-                for p in paths:
-                    # No vdf, as barras duplas são literais, precisamos resolver o caminho
-                    clean_path = p.replace(r"\\", "\\")
-                    full_app_path = os.path.join(clean_path, "steamapps")
-                    if os.path.exists(full_app_path):
-                        libraries.append(full_app_path)
-        except Exception as e:
-            print(f"[Games] Erro ao ler libraryfolders.vdf: {e}")
-    else:
-        # Fallbacks tradicionais
-        if os.path.exists(os.path.join(base_steam_path, "steamapps")):
-            libraries.append(os.path.join(base_steam_path, "steamapps"))
-        if os.path.exists(r"D:\SteamLibrary\steamapps"):
-            libraries.append(r"D:\SteamLibrary\steamapps")
-            
-    return libraries
-
 def get_installed_games(skip_size=False):
     jogos = []
     
     # 1. Steam
-    steam_paths = get_steam_libraries()
+    steam_paths = [
+        r"C:\Program Files (x86)\Steam\steamapps",
+        r"D:\SteamLibrary\steamapps"
+    ]
     for spath in steam_paths:
         if os.path.exists(spath):
             for acf in glob.glob(os.path.join(spath, "appmanifest_*.acf")):
