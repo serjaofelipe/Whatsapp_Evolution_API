@@ -302,7 +302,7 @@ async def dispatch_tool_call(function_name: str, arguments: str, remote_jid: str
             return await asyncio.to_thread(open_url, args.get("url", ""))
         elif function_name == "list_installed_games":
             from tools.games import get_installed_games
-            jogos = await asyncio.to_thread(get_installed_games)
+            jogos = await asyncio.to_thread(get_installed_games, True) # skip_size=True para não travar 20s
             if not jogos: return "Nenhum jogo encontrado."
             resultado = ""
             plataformas = {}
