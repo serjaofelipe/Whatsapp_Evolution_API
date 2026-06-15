@@ -548,6 +548,11 @@ async def process_assistant_request(remote_jid: str, text: Optional[str] = None,
                         "name": function_name,
                         "content": tool_result,
                     })
+                    
+                    if function_name == "delegate_to_antigravity":
+                        await state_manager.set_messages(remote_jid, messages)
+                        return
+                        
                 await state_manager.set_messages(remote_jid, messages)
             else:
                 await logger_ai.log_ai_usage(remote_jid, "Groq/Gemini", "Mensagem de Texto", f"Tamanho: {len(response_message.content or '')} chars")
