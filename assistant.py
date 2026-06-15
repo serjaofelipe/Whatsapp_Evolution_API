@@ -472,6 +472,9 @@ async def process_assistant_request(remote_jid: str, text: Optional[str] = None,
                                     sanitized.append({"role": "user", "content": content})
                                 elif role == "assistant" and content:
                                     sanitized.append({"role": "assistant", "content": content})
+                                elif role == "tool" and content:
+                                    name = m.get("name", "Desconhecida")
+                                    sanitized.append({"role": "user", "content": f"[Resultado da Ferramenta {name}]:\n{content}"})
                                     
                             # Mescla roles consecutivos
                             merged = []
@@ -485,7 +488,7 @@ async def process_assistant_request(remote_jid: str, text: Optional[str] = None,
                                         
                             # Garante que termine com user
                             if merged and merged[-1]["role"] != "user":
-                                merged.append({"role": "user", "content": "Execute a ação solicitada."})
+                                merged.append({"role": "user", "content": "Continue."})
 
                             resp = await client.post(
                                 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
