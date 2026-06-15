@@ -29,8 +29,12 @@ if sys.platform == "win32":
         hStdIn = kernel32.GetStdHandle(STD_INPUT_HANDLE)
         mode = ctypes.c_uint32()
         kernel32.GetConsoleMode(hStdIn, ctypes.byref(mode))
+        
+        ENABLE_EXTENDED_FLAGS = 0x0080
         ENABLE_QUICK_EDIT_MODE = 0x0040
-        new_mode = mode.value & ~ENABLE_QUICK_EDIT_MODE
+        
+        # Para alterar o QuickEdit, o Windows exige que a flag ENABLE_EXTENDED_FLAGS esteja ativa
+        new_mode = (mode.value | ENABLE_EXTENDED_FLAGS) & ~ENABLE_QUICK_EDIT_MODE
         kernel32.SetConsoleMode(hStdIn, new_mode)
     except Exception as e:
         print(f"Aviso: Nao foi possivel desabilitar o QuickEdit Mode: {e}")
