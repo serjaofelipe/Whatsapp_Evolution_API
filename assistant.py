@@ -461,12 +461,38 @@ async def process_assistant_request(remote_jid: str, text: Optional[str] = None,
                             return
 
                         async with httpx.AsyncClient() as client:
+                            # Sanitiza o histórico para o Gemini (remove tool_calls anteriores para evitar erros 400 de sintaxe rígida)
+                            sanitized = []
+                            for m in messages:
+                                role = m.get("role")
+                                content = str(m.get("content") or "")
+                                if role == "system":
+                                    sanitized.append(m)
+                                elif role == "user" and content:
+                                    sanitized.append({"role": "user", "content": content})
+                                elif role == "assistant" and content:
+                                    sanitized.append({"role": "assistant", "content": content})
+                                    
+                            # Mescla roles consecutivos
+                            merged = []
+                            for m in sanitized:
+                                if not merged: merged.append(m)
+                                else:
+                                    if merged[-1]["role"] == m["role"]:
+                                        merged[-1]["content"] += "\n" + m["content"]
+                                    else:
+                                        merged.append(m)
+                                        
+                            # Garante que termine com user
+                            if merged and merged[-1]["role"] != "user":
+                                merged.append({"role": "user", "content": "Execute a ação solicitada."})
+
                             resp = await client.post(
                                 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
                                 headers={'Authorization': f'Bearer {google_key}'},
                                 json={
                                     'model': 'gemini-2.5-flash',
-                                    'messages': messages,
+                                    'messages': merged,
                                     'tools': tools,
                                     'tool_choice': 'auto',
                                     'max_tokens': 4096
