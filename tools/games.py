@@ -43,6 +43,37 @@ def get_installed_games(skip_size=False):
                             install_path = os.path.join(spath, "common", installdir_match.group(1)) if installdir_match else ""
                             jogos.append({"nome": name_match.group(1), "plataforma": "Steam", "launch_cmd": f"steam://rungameid/{app_id}", "tamanho_gb": size_gb, "install_path": install_path})
                 except: pass
+    
+    # Minecraft
+    mc_dir = os.path.join(os.environ['APPDATA'], ".minecraft")
+    minecraft = r"C:\Program Files (x86)\Minecraft Launcher\MinecraftLauncher.exe"
+    if os.path.exists(minecraft):
+        jogos.append({
+            "nome": "Minecraft",
+            "plataforma": "Mojang",
+            "launch_cmd": f'"{minecraft}"',
+            "tamanho_gb": _get_dir_size_gb(mc_dir) if not skip_size and os.path.exists(mc_dir) else 0,
+            "install_path": mc_dir
+        })
+    else:
+        appdata_mc = os.path.join(mc_dir, "MinecraftLauncher.exe")
+        if os.path.exists(appdata_mc):
+            jogos.append({
+                "nome": "Minecraft",
+                "plataforma": "Mojang",
+                "launch_cmd": f'"{appdata_mc}"',
+                "tamanho_gb": _get_dir_size_gb(mc_dir) if not skip_size else 0,
+                "install_path": mc_dir
+            })
+        else:
+            jogos.append({
+                "nome": "Minecraft",
+                "plataforma": "Mojang",
+                "launch_cmd": "minecraft://",
+                "tamanho_gb": _get_dir_size_gb(mc_dir) if not skip_size and os.path.exists(mc_dir) else 0,
+                "install_path": mc_dir
+            })
+
     epic_manifest_dir = r"C:\ProgramData\Epic\EpicGamesLauncher\Data\Manifests"
     if os.path.exists(epic_manifest_dir):
         for item in glob.glob(os.path.join(epic_manifest_dir, "*.item")):
