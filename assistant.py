@@ -256,6 +256,21 @@ def get_groq_tools(user_prompt: str = "") -> list:
                     "required": ["game_name"]
                 }
             }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "send_whatsapp_message",
+                "description": "Envia uma mensagem de texto via WhatsApp para um número específico.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "number": {"type": "string", "description": "O número de telefone de destino (ex: +55 41 9999-9999)."},
+                        "message_content": {"type": "string", "description": "O conteúdo da mensagem a ser enviada."}
+                    },
+                    "required": ["number", "message_content"]
+                }
+            }
         }
     ]
     
@@ -331,6 +346,10 @@ async def dispatch_tool_call(function_name: str, arguments: str, remote_jid: str
                 await asyncio.to_thread(executar_jogo, alvo["launch_cmd"])
                 return f"Jogo '{alvo['nome']}' ({alvo['plataforma']}) iniciado!"
             return f"Jogo '{args.get('game_name', '')}' não encontrado."
+        elif function_name == "send_whatsapp_message":
+            from evolution_api_client import send_text_message
+            await send_text_message(args.get("number", ""), args.get("message_content", ""))
+            return f"Mensagem enviada com sucesso para {args.get('number', '')}."
         else:
             return f"Ferramenta não encontrada: {function_name}"
     except Exception as e:
