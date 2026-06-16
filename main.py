@@ -507,8 +507,7 @@ async def evolution_webhook(request: Request, background_tasks: BackgroundTasks,
             temp_clean_number = ''.join(filter(str.isdigit, temp_remote_jid))
             if not any(admin in temp_clean_number for admin in ALL_ADMINS):
                 return {"status": "ignored", "reason": "outgoing_to_non_admin"}
-            if not temp_text.strip().startswith("/"):
-                return {"status": "ignored", "reason": "from_me_not_command"}
+            # Removido a exigência de começar com '/' para que comandos naturais funcionem
 
         message_id = data.get("key", {}).get("id")
 
