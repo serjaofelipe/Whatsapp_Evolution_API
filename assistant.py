@@ -86,7 +86,7 @@ def get_groq_client():
     return None
 
 
-def get_groq_tools(user_prompt: str = "") -> list:
+def get_groq_tools(user_prompt: str = "", remote_jid: str = "") -> list:
     """Retorna todas as ferramentas disponíveis para o LLM."""
     
     def remover_acentos(txt):
@@ -256,8 +256,16 @@ def get_groq_tools(user_prompt: str = "") -> list:
                     "required": ["game_name"]
                 }
             }
-        },
-        {
+        }
+    ]
+    
+    load_dotenv(override=True)
+    import os
+    master_admins = [a.strip() for a in os.getenv("ADMIN_MASTER_NUMBERS", "").split(",") if a.strip()]
+    is_master = any(admin in remote_jid for admin in master_admins)
+    
+    if is_master:
+        general_tools.append({
             "type": "function",
             "function": {
                 "name": "send_whatsapp_message",
@@ -271,9 +279,8 @@ def get_groq_tools(user_prompt: str = "") -> list:
                     "required": ["number", "message_content"]
                 }
             }
-        }
-    ]
-    
+        })
+
     final_tools = tools + general_tools
     if any(kw in user_prompt_lower for kw in ["pc", "computador", "terminal", "script", "codigo", "sistema"]):
         final_tools += script_tools
@@ -442,7 +449,7 @@ async def process_assistant_request(remote_jid: str, text: Optional[str] = None,
             messages.append({"role": "user", "content": user_prompt})
             await state_manager.set_messages(remote_jid, messages)
 
-        tools = get_groq_tools(user_prompt)
+        tools = get_groq_tools(user_prompt, remote_jid)
         max_turns = 15
 
         for turn in range(max_turns):
