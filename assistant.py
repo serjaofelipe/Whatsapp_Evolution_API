@@ -391,21 +391,28 @@ async def process_assistant_request(remote_jid: str, text: Optional[str] = None,
         else:
             # Transcreve áudio se vier mídia
             if media_path:
-                await send_text_message(remote_jid, "🎤 Ouvindo áudio com Whisper...")
-                with open(media_path, "rb") as audio_file:
-                    transcription = await groq_client.audio.transcriptions.create(
-                        file=(media_path, audio_file.read()),
-                        model="whisper-large-v3",
-                        response_format="text"
-                    )
-                transcribed_text = str(transcription).strip()
-                print(f"🎤 [WHISPER] '{transcribed_text}'")
-                if user_prompt:
-                    user_prompt += f"\n[Áudio: {transcribed_text}]"
+                if str(media_path).lower().endswith(('.ogg', '.mp3', '.wav', '.m4a')):
+                    await send_text_message(remote_jid, "🎤 Ouvindo áudio com Whisper...")
+                    with open(media_path, "rb") as audio_file:
+                        transcription = await groq_client.audio.transcriptions.create(
+                            file=(media_path, audio_file.read()),
+                            model="whisper-large-v3",
+                            response_format="text"
+                        )
+                    transcribed_text = str(transcription).strip()
+                    print(f"🎤 [WHISPER] '{transcribed_text}'")
+                    if user_prompt:
+                        user_prompt += f"\n[Áudio: {transcribed_text}]"
+                    else:
+                        user_prompt = transcribed_text
                 else:
-                    user_prompt = transcribed_text
+                    # É uma imagem ou outro documento
+                    if not force_gemini:
+                        print("[Assistant] Imagem recebida. Forçando Gemini Flash pois Groq não tem visão nativa.")
+                        force_gemini = True
+                        GLOBAL_USE_GEMINI[remote_jid] = True
 
-            if not user_prompt:
+            if not user_prompt and not media_path:
                 return
 
             messages = await state_manager.get_messages(remote_jid)

@@ -584,12 +584,8 @@ async def evolution_webhook(request: Request, background_tasks: BackgroundTasks,
         # Verifica se o remetente (ou destinatário no caso de fromMe=True) é um admin
         is_admin = any(admin in clean_number for admin in ALL_ADMINS)
 
-        # Se não for admin, envia mensagem padrão (personalize aqui!)
+        # Se não for admin e não for grupo, apenas ignora silenciosamente.
         if not is_admin and not is_group:
-            background_tasks.add_task(
-                send_text_message, remote_jid,
-                "👋 Olá! Este é um assistente privado. Entre em contato pelo número oficial."
-            )
             return {"status": "success", "reason": "unauthorized_redirected"}
 
         # Ignora grupos
