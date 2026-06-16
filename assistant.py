@@ -345,6 +345,7 @@ async def cleanup_fallback(remote_jid: str):
     if remote_jid in PENDING_FALLBACKS:
         del PENDING_FALLBACKS[remote_jid]
         print(f"[Fallback] TTL Expirado. Fallback limpo para {remote_jid}")
+        await send_text_message(remote_jid, "⏳ *Aviso:* O tempo de 2 minutos para confirmar a troca de IA expirou. Comando cancelado.")
 
 SYSTEM_PROMPT = (
     "Você é o Atlas, um assistente virtual supremo que reside no computador local do usuário. "
