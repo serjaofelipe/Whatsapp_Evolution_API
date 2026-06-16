@@ -591,13 +591,13 @@ async def evolution_webhook(request: Request, background_tasks: BackgroundTasks,
         if is_group:
             return {"status": "success"}
 
-        if msg_text and "/video" in msg_text.lower():
+        if msg_text and ("/video" in msg_text.lower() or "/vídeo" in msg_text.lower()):
             print(f"[ROTEAMENTO] Comando de Vídeo Desktop solicitado por {clean_number}.")
             from tools.desktop_call import iniciar_chamada_desktop
             background_tasks.add_task(iniciar_chamada_desktop, clean_number)
             
-            # Remove o comando /video do texto para que o restante (ex: "crie um site") seja processado
-            msg_text = re.sub(r'(?i)/video\s*', '', msg_text).strip()
+            # Remove o comando /video ou /vídeo do texto para que o restante (ex: "crie um site") seja processado
+            msg_text = re.sub(r'(?i)/v[ií]deo\s*', '', msg_text).strip()
             if not msg_text and not img_path:
                 return {"status": "success", "reason": "desktop_video_call"}
 
