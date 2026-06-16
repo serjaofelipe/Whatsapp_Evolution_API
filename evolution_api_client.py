@@ -24,9 +24,14 @@ _http_client = httpx.AsyncClient(
 def format_jid(phone: str) -> str:
     if "@lid" in phone:
         return phone
+    has_plus = phone.strip().startswith('+')
     clean_phone = ''.join(filter(str.isdigit, phone))
-    if len(clean_phone) <= 11:
-        clean_phone = f"55{clean_phone}"
+    if has_plus:
+        return clean_phone
+    if len(clean_phone) >= 12:
+        return clean_phone
+    if len(clean_phone) in [10, 11]:
+        return f"55{clean_phone}"
     return clean_phone
 
 async def send_text_message(phone: str, text: str):
