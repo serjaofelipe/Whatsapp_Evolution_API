@@ -89,6 +89,16 @@ def get_groq_client():
 def get_groq_tools(user_prompt: str = "", remote_jid: str = "") -> list:
     """Retorna todas as ferramentas disponíveis para o LLM."""
     
+    load_dotenv(override=True)
+    import os
+    master_admins = [a.strip() for a in os.getenv("ADMIN_MASTER_NUMBERS", "").split(",") if a.strip()]
+    is_master = any(admin in remote_jid for admin in master_admins)
+    
+    # Se não for Master, não tem acesso a NENHUMA ferramenta, apenas Q&A
+    if not is_master:
+        return []
+
+    
     def remover_acentos(txt):
         return ''.join(c for c in unicodedata.normalize('NFD', txt) if unicodedata.category(c) != 'Mn')
     
