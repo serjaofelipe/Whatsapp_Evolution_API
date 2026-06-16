@@ -589,9 +589,36 @@ async def process_assistant_request(remote_jid: str, text: Optional[str] = None,
                         
                 await state_manager.set_messages(remote_jid, messages)
             else:
-                await logger_ai.log_ai_usage(remote_jid, "Groq/Gemini", "Mensagem de Texto", f"Tamanho: {len(response_message.content or '')} chars")
-                if response_message.content:
-                    await send_text_message(remote_jid, response_message.content)
+                content = response_message.content or ""
+                
+                # Tratamento para alucinação de XML do Llama 3
+                import re
+                func_match = re.search(r'<function>([a-zA-Z0-9_]+)({.*?})</function>', content, re.DOTALL)
+                
+                if func_match:
+                    f_name = func_match.group(1)
+                    f_args = func_match.group(2)
+                    print(f"[Assistant] Alucinação de tool detectada (XML). Executando {f_name} manualmente.")
+                    await logger_ai.log_ai_usage(remote_jid, "Groq/Gemini", "Chamou Tool (Fallback XML)", f_name)
+                    tool_result = await dispatch_tool_call(f_name, f_args, remote_jid)
+                    
+                    messages.append({
+                        "role": "tool",
+                        "name": f_name,
+                        "content": tool_result,
+                        "tool_call_id": "call_fallback_xml"
+                    })
+                    
+                    clean_content = content.replace(func_match.group(0), "").strip()
+                    if clean_content:
+                        await send_text_message(remote_jid, clean_content)
+                        
+                    await state_manager.set_messages(remote_jid, messages)
+                    continue # Continua o loop para a IA analisar o resultado da tool
+                    
+                await logger_ai.log_ai_usage(remote_jid, "Groq/Gemini", "Mensagem de Texto", f"Tamanho: {len(content)} chars")
+                if content:
+                    await send_text_message(remote_jid, content)
                 await state_manager.set_messages(remote_jid, messages)
                 break
 
