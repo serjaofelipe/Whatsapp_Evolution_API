@@ -572,6 +572,7 @@ async def process_assistant_request(remote_jid: str, text: Optional[str] = None,
                     raise api_err
 
             if tool_calls:
+                force_break = False
                 for tool_call in tool_calls:
                     function_name = tool_call.function.name
                     await logger_ai.log_ai_usage(remote_jid, "Groq/Gemini", "Chamou Tool", function_name)
@@ -586,8 +587,13 @@ async def process_assistant_request(remote_jid: str, text: Optional[str] = None,
                     if function_name == "delegate_to_antigravity":
                         await state_manager.set_messages(remote_jid, messages)
                         return
+                    elif function_name == "send_whatsapp_message":
+                        await send_text_message(remote_jid, f"✅ [Execução Nativa] Status do envio:\n{tool_result}")
+                        force_break = True
                         
                 await state_manager.set_messages(remote_jid, messages)
+                if force_break:
+                    break
             else:
                 content = response_message.content or ""
                 
@@ -601,6 +607,9 @@ async def process_assistant_request(remote_jid: str, text: Optional[str] = None,
                     print(f"[Assistant] Alucinação de tool detectada (XML). Executando {f_name} manualmente.")
                     await logger_ai.log_ai_usage(remote_jid, "Groq/Gemini", "Chamou Tool (Fallback XML)", f_name)
                     tool_result = await dispatch_tool_call(f_name, f_args, remote_jid)
+                    
+                    if f_name == "send_whatsapp_message":
+                        await send_text_message(remote_jid, f"✅ [Execução XML] Status do envio:\n{tool_result}")
                     
                     clean_content = content.replace(func_match.group(0), "").strip()
                     if clean_content:
