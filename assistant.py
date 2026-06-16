@@ -451,16 +451,23 @@ async def process_assistant_request(remote_jid: str, text: Optional[str] = None,
 
                 except Exception as api_err:
                     error_str = str(api_err)
-                    if "429" in error_str or "rate_limit_exceeded" in error_str or "503" in error_str:
+                    
+                    # Se não for o bypass forçado do gemini, trata como erro real do Groq
+                    if "429 force gemini bypass" not in error_str:
                         if not force_gemini:
-                            print("[OpenClaw] Rate Limit Groq atingido. Aguardando confirmação...")
+                            print(f"[OpenClaw] Erro no Groq detectado: {error_str}. Aguardando confirmação para Gemini...")
                             PENDING_FALLBACKS[remote_jid] = messages
                             asyncio.create_task(cleanup_fallback(remote_jid))
                             await state_manager.set_messages(remote_jid, messages)
-                            await send_text_message(remote_jid, "⚠️ *Alerta: Limite de uso do Groq atingido.*\n\nO servidor recusou a conexão temporariamente.\n\nDeseja que eu troque o cérebro para o **Gemini Flash** e continue seu projeto exatamente de onde parei?\n\nDigite *Y* para sim.")
+                            
+                            # Se for limite de cota
+                            if "429" in error_str or "rate_limit" in error_str.lower() or "503" in error_str:
+                                await send_text_message(remote_jid, "⚠️ *Alerta: Limite de uso do Groq atingido.*\n\nO servidor recusou a conexão temporariamente.\n\nDeseja que eu troque o cérebro para o **Gemini Flash** e continue seu projeto exatamente de onde parei?\n\nDigite *Y* para sim.")
+                            else:
+                                await send_text_message(remote_jid, "⚠️ *Alerta: Ocorreu uma instabilidade ou falha no Groq.*\n\nDeseja que eu troque o cérebro para o **Gemini Flash** e continue seu projeto exatamente de onde parei?\n\nDigite *Y* para sim.")
                             return
-
-                        # Fallback para Gemini
+                            
+                    # Se chegou aqui, force_gemini é True, então processa o Fallback diretamente
                         import httpx
                         google_key = os.getenv("GOOGLE_API_KEY")
                         if not google_key:
