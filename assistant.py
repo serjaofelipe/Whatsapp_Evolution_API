@@ -602,19 +602,13 @@ async def process_assistant_request(remote_jid: str, text: Optional[str] = None,
                     await logger_ai.log_ai_usage(remote_jid, "Groq/Gemini", "Chamou Tool (Fallback XML)", f_name)
                     tool_result = await dispatch_tool_call(f_name, f_args, remote_jid)
                     
-                    messages.append({
-                        "role": "tool",
-                        "name": f_name,
-                        "content": tool_result,
-                        "tool_call_id": "call_fallback_xml"
-                    })
-                    
                     clean_content = content.replace(func_match.group(0), "").strip()
                     if clean_content:
                         await send_text_message(remote_jid, clean_content)
+                        messages.append({"role": "assistant", "content": clean_content})
                         
                     await state_manager.set_messages(remote_jid, messages)
-                    continue # Continua o loop para a IA analisar o resultado da tool
+                    break # Encerra o turno, não pede nova resposta pro LLM para evitar loop infinito
                     
                 await logger_ai.log_ai_usage(remote_jid, "Groq/Gemini", "Mensagem de Texto", f"Tamanho: {len(content)} chars")
                 if content:
