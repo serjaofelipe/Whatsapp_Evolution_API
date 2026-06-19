@@ -40,12 +40,16 @@ def iniciar_chamada_desktop(numero_limpo: str):
             pyautogui.moveTo(x, y, duration=0.3)
             time.sleep(0.2)
             
-            # Executa um clique "lento" para o Windows processar corretamente o botão
-            pyautogui.mouseDown()
-            time.sleep(0.1)
-            pyautogui.mouseUp()
+            # Executa o PRIMEIRO clique
+            pyautogui.click()
             
-            print("[Desktop Call] Chamada iniciada com sucesso!")
+            # Aguarda 2 segundos para garantir o registro do app
+            time.sleep(2)
+            
+            # Executa o SEGUNDO clique para garantir a chamada
+            pyautogui.click()
+            
+            print("[Desktop Call] Chamada iniciada com sucesso (com duplo clique de segurança)!")
         else:
             print("[Desktop Call] Ícone de câmera de vídeo NÃO encontrado na tela.")
             
