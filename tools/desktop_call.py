@@ -10,6 +10,7 @@ def iniciar_chamada_desktop(numero_limpo: str):
     ícone de chamada de vídeo.
     """
     try:
+        pyautogui.FAILSAFE = False
         print(f"[Desktop Call] Iniciando chamada de vídeo para o número {numero_limpo}...")
         
         # Abre o aplicativo oficial do WhatsApp no Windows
