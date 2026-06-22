@@ -127,11 +127,40 @@ async def process_whatsbot_command(remote_jid: str, text: str) -> bool:
                 "/bloquear | /panico | /suspender\n"
                 "/reiniciar | /desligar\n\n"
                 "👥 *Gestão de Grupos (Master):*\n"
-                "/cgroup <nome> <nums> - Criar grupo\n"
-                "/adgroup <nome> <nums> - Add membros\n"
-                "/admgroup <nome> <nums> - Gerenciar admins\n\n"
+                "/newcontato <nome> - <num> - Salvar contato local\n"
+                "/cgroup <nome> - <nums> - Criar grupo\n"
+                "/adgroup <nome> - <nums> - Add membros\n"
+                "/admgroup <nome> - <nums> - Gerenciar admins\n\n"
                 "🔄 Mudar para Mac: /mac"
             )
+
+        elif comando_base == '/newcontato':
+            if not argumento or '-' not in argumento:
+                await send_text_message(remote_jid, "⚠️ Use: /newcontato Nome do Contato - Numero (ex: 41999999999)")
+                return True
+            parts = argumento.split("-", 1)
+            nome = parts[0].strip()
+            numero = parts[1].strip()
+            
+            num_clean = re.sub(r'[\s\+\-]', '', numero)
+            
+            try:
+                import json
+                json_path = os.path.join(PASTA_RAIZ, 'contatos.json')
+                contatos_locais = {}
+                if os.path.exists(json_path):
+                    with open(json_path, 'r', encoding='utf-8') as f:
+                        contatos_locais = json.load(f)
+                
+                contatos_locais[nome] = num_clean
+                
+                with open(json_path, 'w', encoding='utf-8') as f:
+                    json.dump(contatos_locais, f, indent=4, ensure_ascii=False)
+                    
+                await send_text_message(remote_jid, f"✅ Contato salvo na agenda local!\n*Nome:* {nome}\n*Número:* {num_clean}")
+            except Exception as e:
+                await send_text_message(remote_jid, f"❌ Erro ao salvar contato: {e}")
+                
 
         elif comando_base == '/cgroup':
             if not argumento or '-' not in argumento:
