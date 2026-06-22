@@ -10,6 +10,7 @@ import re
 import socket
 import os
 import platform
+import json
 
 PASTA_RAIZ = os.path.dirname(os.path.abspath(__file__))
 SISTEMA_ATUAL = platform.system() # Retorna 'Windows' ou 'Darwin' (Mac)
