@@ -23,11 +23,25 @@ def _format_size(gb):
 def get_installed_games(skip_size=False):
     jogos = []
     
-    # 1. Steam
-    steam_paths = [
-        r"C:\Program Files (x86)\Steam\steamapps",
-        r"D:\SteamLibrary\steamapps"
-    ]
+    # 1. Steam (Leitura Dinâmica de Bibliotecas)
+    steam_install_paths = [r"C:\Program Files (x86)\Steam", r"C:\Program Files\Steam", r"D:\Steam"]
+    steam_paths = []
+    
+    for sp in steam_install_paths:
+        vdf = os.path.join(sp, 'steamapps', 'libraryfolders.vdf')
+        if os.path.exists(vdf):
+            try:
+                with open(vdf, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    paths = re.findall(r'"path"\s+"([^"]+)"', content)
+                    for p in paths:
+                        clean_path = p.replace('\\\\', '\\')
+                        steam_paths.append(os.path.join(clean_path, "steamapps"))
+            except: pass
+        steam_paths.append(os.path.join(sp, "steamapps"))
+        
+    steam_paths = list(set(steam_paths))
+    
     for spath in steam_paths:
         if os.path.exists(spath):
             for acf in glob.glob(os.path.join(spath, "appmanifest_*.acf")):
