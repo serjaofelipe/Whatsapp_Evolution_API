@@ -402,7 +402,6 @@ async def dispatch_tool_call(function_name: str, arguments: str, remote_jid: str
                     t_lower = t.lower()
                     
                     try:
-                        import json
                         json_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'contatos.json')
                         if os.path.exists(json_path):
                             with open(json_path, 'r', encoding='utf-8') as f:
