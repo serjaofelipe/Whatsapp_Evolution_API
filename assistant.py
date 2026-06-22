@@ -279,14 +279,26 @@ def get_groq_tools(user_prompt: str = "", remote_jid: str = "") -> list:
             "type": "function",
             "function": {
                 "name": "send_whatsapp_message",
-                "description": "Envia uma mensagem de texto via WhatsApp para um número específico.",
+                "description": "Envia uma mensagem de texto via WhatsApp para múltiplos destinos (números soltos, nomes de contatos exatos da agenda e grupos).",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "number": {"type": "string", "description": "O número de telefone de destino (ex: +55 41 9999-9999)."},
-                        "message_content": {"type": "string", "description": "O conteúdo da mensagem a ser enviada."}
+                        "targets": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Lista de números de telefone (+55...) ou Nomes EXATOS de contatos da agenda."
+                        },
+                        "groups": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Lista de nomes exatos de grupos para onde enviar."
+                        },
+                        "message_content": {
+                            "type": "string",
+                            "description": "O conteúdo da mensagem a ser enviada."
+                        }
                     },
-                    "required": ["number", "message_content"]
+                    "required": ["message_content"]
                 }
             }
         })
@@ -364,9 +376,67 @@ async def dispatch_tool_call(function_name: str, arguments: str, remote_jid: str
                 return f"Jogo '{alvo['nome']}' ({alvo['plataforma']}) iniciado!"
             return f"Jogo '{args.get('game_name', '')}' não encontrado."
         elif function_name == "send_whatsapp_message":
-            from evolution_api_client import send_text_message
-            await send_text_message(args.get("number", ""), args.get("message_content", ""))
-            return f"Mensagem enviada com sucesso para {args.get('number', '')}."
+            from evolution_api_client import send_text_message, fetch_contacts, fetch_groups, format_jid
+            import re
+            
+            targets = args.get("targets", [])
+            group_names = args.get("groups", [])
+            if args.get("number") and not targets:
+                targets = [args.get("number")]
+                
+            content = args.get("message_content", "")
+            if not content: return "Erro: Conteúdo da mensagem vazio."
+            
+            jids_to_send = set()
+            errors = []
+            
+            if targets:
+                contacts = await fetch_contacts()
+                for t in targets:
+                    clean_t = re.sub(r'[\s\+\-]', '', t)
+                    if clean_t.isdigit() and len(clean_t) >= 8:
+                        jids_to_send.add(format_jid(clean_t))
+                        continue
+                        
+                    found = False
+                    for c in contacts:
+                        c_name = c.get('pushName') or c.get('name') or ""
+                        if c_name == t:
+                            jid = c.get('remoteJid') or c.get('id')
+                            if jid:
+                                jids_to_send.add(jid)
+                            found = True
+                            break
+                    if not found:
+                        errors.append(f"Contato não encontrado: {t}")
+                        
+            if group_names:
+                groups = await fetch_groups()
+                for gn in group_names:
+                    found = False
+                    for g in groups:
+                        if g.get('subject') == gn:
+                            jids_to_send.add(g.get('id'))
+                            found = True
+                            break
+                    if not found:
+                        errors.append(f"Grupo não encontrado: {gn}")
+                        
+            if not jids_to_send:
+                return "Erro: Nenhum alvo válido foi resolvido.\n" + "\n".join(errors)
+                
+            jids_list = list(jids_to_send)
+            total = len(jids_list)
+            
+            for jid in jids_list:
+                await send_text_message(jid, content)
+                if total > 50:
+                    await asyncio.sleep(2)
+                    
+            res_msg = f"Mensagem enviada com sucesso para {total} alvo(s)."
+            if errors:
+                res_msg += "\nErros de resolução:\n" + "\n".join(errors)
+            return res_msg
         else:
             return f"Ferramenta não encontrada: {function_name}"
     except Exception as e:
