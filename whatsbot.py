@@ -42,6 +42,27 @@ async def _resolve_contact_names(targets_str: str):
             
         found = False
         t_lower = t.lower()
+        
+        # Tentar resolver pelo contatos.json local primeiro
+        try:
+            import json
+            json_path = os.path.join(PASTA_RAIZ, 'contatos.json')
+            if os.path.exists(json_path):
+                with open(json_path, 'r', encoding='utf-8') as f:
+                    contatos_locais = json.load(f)
+                for nome_salvo, numero in contatos_locais.items():
+                    if nome_salvo.lower() == t_lower:
+                        num_clean = re.sub(r'[\s\+\-]', '', str(numero))
+                        valid_jids.append(format_jid(num_clean))
+                        found = True
+                        break
+        except Exception as e:
+            print(f"Erro ao ler contatos.json: {e}")
+            
+        if found:
+            continue
+
+        # Fallback para a Evolution API (PushNames)
         for c in contacts:
             if not c.get('isSaved'): continue
             
