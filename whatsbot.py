@@ -43,11 +43,13 @@ async def _resolve_contact_names(targets_str: str):
         found = False
         t_lower = t.lower()
         for c in contacts:
+            if not c.get('isSaved'): continue
+            
             c_name = (c.get('pushName') or c.get('name') or "").lower()
             if not c_name: continue
             
-            # Match exato ignorando maiúsculas, ou match parcial (se o pushName da API for parte do que o usuário digitou ou vice-versa)
-            if c_name == t_lower or c_name in t_lower or t_lower in c_name:
+            # Match EXATO ignorando maiúsculas. (Não usar 'in' para evitar adicionar aleatórios)
+            if c_name == t_lower:
                 jid = c.get('remoteJid') or c.get('id')
                 if jid:
                     valid_jids.append(jid)
