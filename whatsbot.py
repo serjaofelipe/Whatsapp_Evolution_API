@@ -103,7 +103,7 @@ async def process_whatsbot_command(remote_jid: str, text: str) -> bool:
     comando_base = partes[0].lower()
     argumento = partes[1] if len(partes) > 1 else ""
 
-    comandos_validos = ['/windows', '/code', '/mac', '/ip', '/stop', '/print', '/foto', '/msg', '/search', '/searchlink', '/cmd', '/bloquear', '/panico', '/desligar', '/reiniciar', '/suspender', '/pastas', '/enviar', '/mirror', '/executar', '/cgroup', '/adgroup', '/admgroup']
+    comandos_validos = ['/windows', '/code', '/mac', '/ip', '/stop', '/print', '/foto', '/msg', '/search', '/searchlink', '/cmd', '/bloquear', '/panico', '/desligar', '/reiniciar', '/suspender', '/pastas', '/enviar', '/mirror', '/executar', '/cgroup', '/adgroup', '/admgroup', '/newcontato']
     
     if comando_base not in comandos_validos:
         return False
