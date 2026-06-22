@@ -381,8 +381,8 @@ async def dispatch_tool_call(function_name: str, arguments: str, remote_jid: str
             
             targets = args.get("targets", [])
             group_names = args.get("groups", [])
-            if args.get("number") and not targets:
-                targets = [args.get("number")]
+            if args.get("number"):
+                return "Erro: O parâmetro 'number' foi descontinuado. Use 'targets' (array de strings) ou 'groups' (array de strings)."
                 
             content = args.get("message_content", "")
             if not content: return "Erro: Conteúdo da mensagem vazio."
