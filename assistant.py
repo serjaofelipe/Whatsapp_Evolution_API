@@ -402,12 +402,16 @@ async def dispatch_tool_call(function_name: str, arguments: str, remote_jid: str
                     t_lower = t.lower()
                     
                     try:
+                        import unicodedata
+                        def rem_acentos(txt):
+                            return ''.join(c for c in unicodedata.normalize('NFD', txt) if unicodedata.category(c) != 'Mn')
+                            
                         json_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'contatos.json')
                         if os.path.exists(json_path):
                             with open(json_path, 'r', encoding='utf-8') as f:
                                 contatos_locais = json.load(f)
                             for nome_salvo, numero in contatos_locais.items():
-                                if nome_salvo.lower() == t_lower:
+                                if rem_acentos(nome_salvo.lower()) == rem_acentos(t_lower):
                                     num_clean = re.sub(r'[\s\+\-]', '', str(numero))
                                     jids_to_send.add(format_jid(num_clean))
                                     found = True
@@ -487,6 +491,7 @@ SYSTEM_PROMPT = (
     "REGRA DE REDE: Para speedtest/ping, use `run_network_diagnostics`. NÃO abra o site speedtest.net.\n"
     "REGRA DE DISCO: Para espaço em disco, use `analyze_disks`. Para pastas pesadas, use `analyze_folders`.\n"
     "REGRA DE INICIATIVA: NUNCA pergunte nomes para pastas/arquivos. Invente um nome coerente e faça imediatamente.\n"
+    "REGRA DO WHATSAPP (MUITO IMPORTANTE): NUNCA envie mensagens via WhatsApp (send_whatsapp_message) a menos que o usuário peça explicitamente (ex: 'envie uma mensagem para...'). Se o usuário disser apenas 'bom dia', 'oi', responda normalmente na conversa sem usar ferramentas.\n"
     "Seja proativo, direto e eficiente."
 )
 
