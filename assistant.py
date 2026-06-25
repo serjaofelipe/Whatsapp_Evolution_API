@@ -279,7 +279,7 @@ def get_groq_tools(user_prompt: str = "", remote_jid: str = "") -> list:
             "type": "function",
             "function": {
                 "name": "send_whatsapp_message",
-                "description": "Envia uma mensagem de texto via WhatsApp para múltiplos destinos (números soltos, nomes de contatos exatos da agenda e grupos).",
+                "description": "EXTREMAMENTE PERIGOSO: NUNCA USE ESTA FERRAMENTA! A MENOS que o usuário envie um comando CLARO E EXPLÍCITO dizendo 'envie uma mensagem para X'. Se o usuário apenas disser 'bom dia', 'oi', 'tudo bem', é terminantemente PROIBIDO usar esta ferramenta.",
                 "parameters": {
                     "type": "object",
                     "properties": {
