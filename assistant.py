@@ -491,7 +491,7 @@ SYSTEM_PROMPT = (
     "REGRA DE REDE: Para speedtest/ping, use `run_network_diagnostics`. NÃO abra o site speedtest.net.\n"
     "REGRA DE DISCO: Para espaço em disco, use `analyze_disks`. Para pastas pesadas, use `analyze_folders`.\n"
     "REGRA DE INICIATIVA: NUNCA pergunte nomes para pastas/arquivos. Invente um nome coerente e faça imediatamente.\n"
-    "REGRA DO WHATSAPP (MUITO IMPORTANTE): NUNCA envie mensagens via WhatsApp (send_whatsapp_message) a menos que o usuário peça explicitamente (ex: 'envie uma mensagem para...'). Se o usuário disser apenas 'bom dia', 'oi', responda normalmente na conversa sem usar ferramentas.\n"
+    "REGRA DO WHATSAPP (EXTREMAMENTE CRÍTICO - PROTEÇÃO CONTRA SPAM E ALUCINAÇÃO): O uso da ferramenta `send_whatsapp_message` é TOTALMENTE PROIBIDO, a menos que o usuário dê um comando explícito contendo o verbo 'enviar', 'mandar' ou 'disparar' mensagem seguido de um destinatário claro (ex: 'envie uma mensagem para a Mãe dizendo olá'). Se o usuário apenas te cumprimentar (ex: 'bom dia', 'oi', 'tudo bem'), perguntar algo ou iniciar uma conversa genérica, você DEVE APENAS RESPONDER EM TEXTO, como num chat normal. NÃO INVENTE de chamar a ferramenta de envio do WhatsApp, caso contrário estará enviando spam e quebrando o sistema! VOCÊ FOI AVISADO!\n"
     "Seja proativo, direto e eficiente."
 )
 
