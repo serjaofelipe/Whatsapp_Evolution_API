@@ -704,8 +704,25 @@ async def process_assistant_request(remote_jid: str, text: Optional[str] = None,
                         await send_text_message(remote_jid, f"✅ [Execução Nativa] Status do envio:\n{tool_result}")
                         force_break = True
                         
-                await state_manager.set_messages(remote_jid, messages)
                 if force_break:
+                    clean_messages = []
+                    for m in messages:
+                        if m.get("role") == "tool" and m.get("name") == "send_whatsapp_message":
+                            continue
+                        if m.get("role") == "assistant" and "tool_calls" in m:
+                            filtered_tc = [tc for tc in m["tool_calls"] if tc["function"]["name"] != "send_whatsapp_message"]
+                            if filtered_tc:
+                                new_m = m.copy()
+                                new_m["tool_calls"] = filtered_tc
+                                clean_messages.append(new_m)
+                            else:
+                                if m.get("content"):
+                                    clean_messages.append({"role": "assistant", "content": m["content"]})
+                                else:
+                                    clean_messages.append({"role": "assistant", "content": "Mensagem enviada com sucesso."})
+                        else:
+                            clean_messages.append(m)
+                    await state_manager.set_messages(remote_jid, clean_messages)
                     break
             else:
                 content = response_message.content or ""
