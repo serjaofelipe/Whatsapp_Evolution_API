@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsAjax</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <!-- Fundo dinâmico de ondas -->
+    <div class="wave-bg">
+        <div class="wave-glow"></div>
+        <svg class="waves" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+             viewBox="0 24 150 28" preserveAspectRatio="none" shape-rendering="auto">
+            <defs>
+                <path id="wa-wave" d="M-160 44c30 0 58-18 88-18s58 18 88 18 58-18 88-18 58 18 88 18 v44h-352z" />
+            </defs>
+            <g class="wave-parallax">
+                <use xlink:href="#wa-wave" href="#wa-wave" x="48" y="0" fill="rgba(37,211,102,0.55)" />
+                <use xlink:href="#wa-wave" href="#wa-wave" x="48" y="3" fill="rgba(0,168,132,0.40)" />
+                <use xlink:href="#wa-wave" href="#wa-wave" x="48" y="5" fill="rgba(18,140,126,0.25)" />
+                <use xlink:href="#wa-wave" href="#wa-wave" x="48" y="7" fill="rgba(7,94,84,0.85)" />
+            </g>
+        </svg>
+    </div>
+
+    <div class="app-container">
+        <!-- Sidebar Esquerda: Conversas -->
+        <div class="sidebar-left">
+            <div class="sidebar-header">
+                <div class="brand">
+                    <span class="brand-logo"><i class="fab fa-whatsapp"></i></span>
+                    <span class="brand-name">Whats<span class="brand-accent">Ajax</span></span>
+                </div>
+                <div class="header-actions">
+                    <button class="icon-btn" onclick="toggleNewChat()" title="Nova conversa"><i class="fas fa-plus"></i></button>
+                    <button class="icon-btn" onclick="toggleAdminPanel()" title="Painel mestre"><i class="fas fa-shield-halved"></i></button>
+                </div>
+            </div>
+
+            <div class="search-bar-container" id="newChatContainer" style="display: none;">
+                <div class="search-bar">
+                    <i class="fas fa-phone"></i>
+                    <input type="text" id="newChatInput" placeholder="Número (ex: 554199999999)">
+                </div>
+                <button onclick="startNewChat()" class="icon-btn"><i class="fas fa-paper-plane"></i></button>
+            </div>
+
+            <div class="search-bar-container">
+                <div class="search-bar">
+                    <i class="fas fa-search"></i>
+                    <input type="text" id="searchInput" placeholder="Pesquisar conversas...">
+                </div>
+            </div>
+
+            <div class="chat-list" id="chatList">
+                <!-- Injetado via JS -->
+            </div>
+        </div>
+
+        <!-- Main Chat -->
+        <div class="main-chat" id="mainChat" style="display: none;">
+            <div class="chat-header">
+                <div class="chat-header-info">
+                    <img src="https://ui-avatars.com/api/?name=User&background=128C7E&color=fff" alt="Contato" class="avatar" id="currentChatAvatar">
+                    <h2 id="currentChatName">Nome do Contato</h2>
+                </div>
+                <div class="header-actions">
+                    <button class="icon-btn" onclick="toggleAdminPanel()"><i class="fas fa-lock"></i></button>
+                </div>
+            </div>
+
+            <div class="chat-messages" id="chatMessages">
+                <!-- Injetado via JS -->
+            </div>
+
+            <div class="chat-input-container">
+                <button class="icon-btn" id="emojiBtn"><i class="far fa-smile"></i></button>
+                <button class="icon-btn" id="attachBtn"><i class="fas fa-paperclip"></i></button>
+                <input type="file" id="mediaInput" multiple hidden>
+                <div id="emojiPickerContainer" style="display:none; position:absolute; bottom: 60px; z-index: 1000;">
+                    <emoji-picker></emoji-picker>
+                </div>
+                <input type="text" id="messageInput" placeholder="Digite uma mensagem">
+                <button class="icon-btn send-btn" onclick="sendMessage()"><i class="fas fa-paper-plane"></i></button>
+            </div>
+        </div>
+
+        <div class="empty-chat" id="emptyChat">
+            <div class="empty-logo"><i class="fab fa-whatsapp"></i></div>
+            <h1>Whats<span class="brand-accent">Ajax</span></h1>
+            <p>Selecione uma conversa para começar a enviar mensagens e monitorar o gateway em tempo real.</p>
+        </div>
+
+        <!-- Sidebar Direita: Admin Panel -->
+        <div class="sidebar-right" id="adminPanel">
+            <div class="admin-header">
+                <h2>Painel Mestre <i class="fas fa-shield-halved"></i></h2>
+                <button class="icon-btn" onclick="toggleAdminPanel()"><i class="fas fa-times"></i></button>
+            </div>
+
+            <div class="admin-content">
+                <h3>Gerenciar Master Admins <i class='fas fa-crown' style='color: #f5c518;'></i></h3>
+                <div class="admin-list" id="masterAdminList"></div>
+                <div class="add-admin">
+                    <input type="text" id="newMasterAdminInput" placeholder="Novo número (ex: 5541...)">
+                    <button onclick="addMasterAdmin()" class="btn-primary">Adicionar</button>
+                </div>
+
+                <hr>
+
+                <h3>Gerenciar Admins Padrão</h3>
+                <div class="admin-list" id="adminList">
+                    <!-- Injetado via JS -->
+                </div>
+                <div class="add-admin">
+                    <input type="text" id="newAdminInput" placeholder="Novo número (ex: 5541...)">
+                    <button onclick="addAdmin()" class="btn-primary">Adicionar</button>
+                </div>
+
+                <hr>
+
+                <h3>Credenciais (.env)</h3>
+                <textarea id="envEditor" rows="15"></textarea>
+                <button onclick="saveEnv()" class="btn-primary" style="width: 100%; margin-top: 10px;">Salvar .env</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="https://cdn.jsdelivr.net/npm/emoji-picker-element@1/index.js"></script>
+    <script src="/static/script.js"></script>
+</body>
+</html>

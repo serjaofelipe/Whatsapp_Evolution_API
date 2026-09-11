@@ -1,0 +1,558 @@
+"""
+WhatsApp Template Atlas - Servidor Principal
+=============================================
+Servidor FastAPI que recebe webhooks da Evolution API,
+roteia comandos para o WhatsBot e mensagens para o Assistente IA.
+
+Compatível com Windows e macOS.
+"""
+import asyncio
+import os
+import sys
+import json
+import time
+import base64
+import uuid
+import re
+from collections import deque
+from datetime import datetime
+from pathlib import Path
+from contextlib import asynccontextmanager
+
+# Corrige erro de subprocesso no Windows e desabilita o QuickEdit Mode do CMD
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+    try:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        STD_INPUT_HANDLE = -10
+        hStdIn = kernel32.GetStdHandle(STD_INPUT_HANDLE)
+        mode = ctypes.c_uint32()
+        kernel32.GetConsoleMode(hStdIn, ctypes.byref(mode))
+        
+        ENABLE_EXTENDED_FLAGS = 0x0080
+        ENABLE_QUICK_EDIT_MODE = 0x0040
+        
+        # Para alterar o QuickEdit, o Windows exige que a flag ENABLE_EXTENDED_FLAGS esteja ativa
+        new_mode = (mode.value | ENABLE_EXTENDED_FLAGS) & ~ENABLE_QUICK_EDIT_MODE
+        kernel32.SetConsoleMode(hStdIn, new_mode)
+    except Exception as e:
+        print(f"Aviso: Nao foi possivel desabilitar o QuickEdit Mode: {e}")
+
+import secrets
+from dotenv import load_dotenv
+
+# Auto-geração do .env antes das importações locais
+BASE_DIR = Path(__file__).resolve().parent
+env_path = BASE_DIR / ".env"
+if not env_path.exists():
+    new_key = secrets.token_hex(16).upper()
+    default_env = f"""# ==========================================
+# GERAÇÃO AUTOMÁTICA DE AMBIENTE (Template)
+# ==========================================
+
+# Evolution API
+SERVER_PORT=8000
+EVOLUTION_API_URL=http://localhost:8080
+INSTANCE_NAME=Atlas
+AUTHENTICATION_API_KEY={new_key}
+GLOBAL_API_KEY={new_key}
+
+# WhatsApp Admins
+ADMIN_NUMBERS=
+ADMIN_MASTER_NUMBERS=
+"""
+    with open(env_path, "w", encoding="utf-8") as f:
+        f.write(default_env)
+    print("\n" + "="*50)
+    print("✅ ARQUIVO .env GERADO AUTOMATICAMENTE!")
+    print(f"🔑 Evolution API Key: {new_key}")
+    
+    print("🔄 Reiniciando container da Evolution API para aplicar a chave...")
+    import subprocess
+    try:
+        subprocess.run(["docker-compose", "down"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(["docker-compose", "up", "-d"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        print("✅ Docker reiniciado com sucesso com a nova chave!")
+    except Exception as e:
+        print(f"⚠️ Aviso: Não foi possível reiniciar o Docker automaticamente: {e}")
+        print("   Por favor, abra outro terminal e rode manualmente:")
+        print("   docker-compose down")
+        print("   docker-compose up -d")
+    print("="*50 + "\n")
+
+load_dotenv()
+
+from fastapi import FastAPI, Request, BackgroundTasks
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+import uvicorn
+import aiofiles
+
+from evolution_api_client import (
+    send_text_message, download_media_message,
+    EVOLUTION_API_URL, INSTANCE_NAME, GLOBAL_API_KEY
+)
+from whatsbot import process_whatsbot_command
+from dashboard_api import router as dashboard_router
+
+
+# ================= CONFIGURAÇÕES =================
+BASE_DIR = Path(__file__).resolve().parent
+BASE_TEMP_DIR = BASE_DIR / "temp_media"
+BASE_TEMP_DIR.mkdir(parents=True, exist_ok=True)
+LOGS_DIR = BASE_DIR / "logs"
+LOGS_DIR.mkdir(parents=True, exist_ok=True)
+
+ADMIN_NUMBERS_ENV = os.getenv("ADMIN_NUMBERS", "")
+ADMIN_NUMBERS = [n.strip() for n in ADMIN_NUMBERS_ENV.split(",") if n.strip()]
+
+ADMIN_MASTER_NUMBERS_ENV = os.getenv("ADMIN_MASTER_NUMBERS", "")
+ADMIN_MASTER_NUMBERS = list(set([n.strip() for n in ADMIN_MASTER_NUMBERS_ENV.split(",") if n.strip()]))
+
+# Junta todos os admins em uma lista única para verificação
+ALL_ADMINS = list(set(ADMIN_NUMBERS + ADMIN_MASTER_NUMBERS))
+
+CONTATOS_PATH = BASE_DIR / "contatos.json"
+
+
+def load_allowed_numbers():
+    """Retorna a lista de números autorizados a ter conversas salvas:
+    admins masters, admins padrão e os contatos de contatos.json.
+
+    A leitura de contatos.json é feita a cada chamada para refletir
+    alterações no arquivo sem reiniciar o servidor.
+    """
+    numeros = list(ALL_ADMINS)
+    try:
+        if CONTATOS_PATH.exists():
+            with open(CONTATOS_PATH, "r", encoding="utf-8") as f:
+                contatos = json.load(f)
+            for _nome, numero in contatos.items():
+                numero_limpo = ''.join(filter(str.isdigit, str(numero)))
+                if numero_limpo:
+                    numeros.append(numero_limpo)
+    except Exception as e:
+        print(f"[Stealth] Erro ao ler contatos.json: {e}")
+    return list(set(numeros))
+
+SERVER_PORT = int(os.getenv("SERVER_PORT", "8000"))
+
+# QR Code Cache
+latest_qr_base64 = None
+
+# Deduplicador de mensagens O(1) com set + deque limitado
+_processed_ids_set = set()
+_processed_ids_queue = deque(maxlen=500)
+
+
+# ================= LIFESPAN =================
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print("=" * 50)
+    print("🚀 WhatsAjax - Iniciando...")
+    print(f"📡 Evolution API: {EVOLUTION_API_URL}")
+    print(f"📋 Instância: {INSTANCE_NAME}")
+    print(f"👑 Master Admins: {ADMIN_MASTER_NUMBERS}")
+    print(f"👤 Admins: {ADMIN_NUMBERS}")
+    print("=" * 50)
+
+    # Envia mensagem de boas-vindas para admins masters
+    async def send_startup():
+        await asyncio.sleep(3)  # Espera a Evolution API estar pronta
+        for admin in ADMIN_MASTER_NUMBERS:
+            try:
+                # await send_text_message(admin, "✅ *Atlas Template* está online e operacional!")
+                pass
+            except Exception as e:
+                print(f"[Startup] Erro ao enviar mensagem para {admin}: {e}")
+
+    asyncio.create_task(send_startup())
+    yield
+    print("🛑 WhatsAjax - Encerrando...")
+
+
+# ================= APP =================
+app = FastAPI(title="WhatsAjax", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Montagem de arquivos estáticos
+static_dir = BASE_DIR / "static"
+static_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+app.mount("/media", StaticFiles(directory=str(BASE_TEMP_DIR)), name="media")
+app.mount("/logs_media", StaticFiles(directory=str(LOGS_DIR)), name="logs_media")
+
+app.include_router(dashboard_router)
+
+templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+
+
+# ================= ROTAS WEB =================
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard_page(request: Request):
+    return HTMLResponse(content=open(static_dir / "index.html", encoding="utf-8").read())
+
+from fastapi import Response
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return Response(status_code=204)
+
+@app.get("/qrcode", response_class=HTMLResponse)
+async def qrcode_page(request: Request):
+    return templates.TemplateResponse(request=request, name="qrcode.html", context={"request": request})
+
+@app.get("/api/qr")
+async def get_qr():
+    global latest_qr_base64
+    if latest_qr_base64:
+        return {"base64": latest_qr_base64}
+
+    import httpx
+    url = f"{EVOLUTION_API_URL}/instance/connect/{INSTANCE_NAME}"
+    headers = {"apikey": GLOBAL_API_KEY}
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, headers=headers)
+            data = response.json()
+            
+            if response.status_code == 401:
+                return {"error": "Chave da API Inválida (401)"}
+            if response.status_code == 404 or data.get("error") == "Not Found":
+                return {"error": "Instância não encontrada (Aguarde a criação automática...)"}
+                
+            if data.get("base64"):
+                latest_qr_base64 = data.get("base64")
+                return {"base64": latest_qr_base64}
+            elif data.get("qrcode", {}).get("base64"):
+                latest_qr_base64 = data.get("qrcode").get("base64")
+                return {"base64": latest_qr_base64}
+            return data
+    except Exception as e:
+        return {"error": f"Erro QR: {str(e)}"}
+
+@app.get("/api/status")
+async def get_status():
+    import httpx
+    url = f"{EVOLUTION_API_URL}/instance/connectionState/{INSTANCE_NAME}"
+    headers = {"apikey": GLOBAL_API_KEY}
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, headers=headers)
+            data = response.json()
+            
+            # Se a instância não existir, cria automaticamente!
+            if response.status_code == 404 or data.get("error") == "Not Found":
+                create_url = f"{EVOLUTION_API_URL}/instance/create"
+                await client.post(create_url, json={"instanceName": INSTANCE_NAME, "integration": "WHATSAPP-BAILEYS"}, headers=headers)
+                
+                # Configura o webhook
+                webhook_url = f"{EVOLUTION_API_URL}/webhook/set/{INSTANCE_NAME}"
+                await client.post(webhook_url, json={
+                    "webhook": {
+                        "enabled": True,
+                        "url": "http://host.docker.internal:8000/webhook/evolution",
+                        "events": ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "QRCODE_UPDATED", "SEND_MESSAGE"]
+                    }
+                }, headers=headers)
+                
+                return {"state": "connecting"}
+            
+            # Se der erro de autenticação, avisa o frontend
+            if response.status_code == 401:
+                return {"error": "A chave da API (GLOBAL_API_KEY) no .env não confere com a do Docker. Rode 'docker-compose down' e 'docker-compose up -d' novamente."}
+                
+            return data
+    except Exception as e:
+        return {"error": f"Erro de conexão com Evolution API: {str(e)}"}
+
+@app.post("/api/logout")
+async def logout_instance():
+    import httpx
+    url = f"{EVOLUTION_API_URL}/instance/logout/{INSTANCE_NAME}"
+    headers = {"apikey": GLOBAL_API_KEY}
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.delete(url, headers=headers)
+            global latest_qr_base64
+            latest_qr_base64 = None
+            return response.json()
+    except Exception as e:
+        return {"error": str(e)}
+
+
+# ================= STEALTH LOGGER =================
+async def process_stealth_message(message_data, remote_jid, text, img_path):
+    """Salva logs de todas as mensagens recebidas em formato JSONL."""
+    today = datetime.now().strftime("%Y-%m-%d")
+    log_dir = LOGS_DIR / today
+    media_dir = log_dir / "midias_recebidas"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    media_dir.mkdir(parents=True, exist_ok=True)
+
+    sender_clean = re.sub(r'[^a-zA-Z0-9]', '_', remote_jid.split('@')[0])
+
+    # Salva log JSONL
+    log_file = log_dir / f"stealth_log_{sender_clean}.log"
+    async with aiofiles.open(log_file, mode="a", encoding="utf-8") as f:
+        await f.write(json.dumps(message_data, ensure_ascii=False) + "\n")
+
+    # Salva mídia inline (base64)
+    if img_path and "temp_media" in str(img_path):
+        import shutil
+        timestamp = int(time.time())
+        dest_path = media_dir / f"{sender_clean}_{timestamp}_thumb.jpg"
+        shutil.copy(img_path, dest_path)
+
+    # Download sob demanda de mídias via Evolution API
+    try:
+        msg_obj = message_data.get("message", {})
+        message_id = message_data.get("key", {}).get("id")
+        has_media = any(k in msg_obj for k in ["imageMessage", "videoMessage", "audioMessage", "documentMessage", "stickerMessage"])
+
+        if has_media and message_id:
+            b64_data = await download_media_message(message_id)
+            if b64_data:
+                ext = "bin"
+                if "imageMessage" in msg_obj: ext = "jpg"
+                elif "videoMessage" in msg_obj: ext = "mp4"
+                elif "audioMessage" in msg_obj: ext = "ogg"
+                elif "stickerMessage" in msg_obj: ext = "webp"
+                elif "documentMessage" in msg_obj:
+                    filename = msg_obj["documentMessage"].get("fileName", "")
+                    mimetype = msg_obj["documentMessage"].get("mimetype", "")
+                    if "audio" in mimetype:
+                        ext = "ogg"
+                    else:
+                        ext = filename.split(".")[-1] if "." in filename else "bin"
+
+                timestamp = int(time.time())
+                file_path = media_dir / f"{sender_clean}_{timestamp}_{message_id[:6]}.{ext}"
+                media_bytes = base64.b64decode(b64_data)
+                async with aiofiles.open(file_path, "wb") as f:
+                    await f.write(media_bytes)
+    except Exception as e:
+        print(f"Erro ao salvar mídia: {e}")
+
+
+# ================= PROCESSADOR DE ADMIN =================
+async def process_admin_message(remote_jid, text, img_path):
+    """Processa mensagem de um admin autorizado.
+
+    O bot opera apenas por comandos hardcoded (/code, /print, /jogos, etc.).
+    Não há mais integração com IA (Groq/Gemini/Whisper).
+    """
+    try:
+        # Só reage a comandos que começam com "/". Qualquer outra mensagem
+        # (conversa normal, áudio, imagem) é IGNORADA silenciosamente para
+        # não responder/spammar durante conversas reais.
+        if not text or not text.strip().startswith("/"):
+            return
+
+        handled = await process_whatsbot_command(remote_jid, text)
+        if not handled:
+            # Comando começa com "/" mas não é reconhecido. Responde uma única
+            # vez para orientar, sem afetar conversas normais.
+            await send_text_message(
+                remote_jid,
+                "❓ Comando não reconhecido.\nEnvie */code* para ver a lista de comandos disponíveis."
+            )
+
+    except Exception as e:
+        print(f"Erro no process_admin_message: {e}")
+        await send_text_message(remote_jid, f"Erro interno: {e}")
+
+
+# ================= WEBHOOK PRINCIPAL =================
+@app.post("/webhook/evolution/{path:path}")
+@app.post("/webhook/evolution")
+async def evolution_webhook(request: Request, background_tasks: BackgroundTasks, path: str = ""):
+    global latest_qr_base64
+    try:
+        payload = await request.json()
+
+        # Log assíncrono de debug
+        async def _log_debug(p):
+            try:
+                async with aiofiles.open("webhook_debug.log", "a", encoding="utf-8") as f:
+                    await f.write(json.dumps(p, ensure_ascii=False) + "\n\n")
+            except Exception:
+                pass
+        asyncio.create_task(_log_debug(payload))
+
+        event_type = payload.get("event")
+
+        # QR Code atualizado
+        if event_type == "qrcode.updated":
+            base64_qr = payload.get("data", {}).get("qrcode", {}).get("base64")
+            if base64_qr:
+                latest_qr_base64 = base64_qr
+                print("✅ QR Code atualizado via Webhook!")
+            return {"status": "ok"}
+
+        # Conexão atualizada
+        if event_type == "connection.update":
+            state = payload.get("data", {}).get("state")
+            if state == "open":
+                latest_qr_base64 = None
+            return {"status": "ok"}
+
+        # Ignora tudo que não for message upsert
+        if event_type != "messages.upsert":
+            return {"status": "ignored", "reason": "not messages.upsert"}
+
+        data = payload.get("data", {})
+        message_info = data.get("message", {})
+
+        # Extrai texto antecipadamente para checar se é um comando
+        conversation = message_info.get("conversation")
+        extended_text = message_info.get("extendedTextMessage", {}).get("text")
+        image_caption = message_info.get("imageMessage", {}).get("caption")
+        temp_text = conversation or extended_text or image_caption or ""
+
+        # Ignora mensagens enviadas por nós mesmos (fromMe=True) para outras pessoas
+        if data.get("key", {}).get("fromMe"):
+            # O remote_jid aqui é quem está *recebendo* a nossa mensagem.
+            # Só processamos comandos se estivermos mandando mensagem para nós mesmos (ou para outro admin).
+            # Para isso extraímos o número limpo do remote_jid e checamos se está na lista de admins.
+            # Assim, se mandarmos um comando num chat qualquer, o bot ignora e não responde naquele chat.
+            temp_remote_jid = data.get("key", {}).get("remoteJid", "")
+            temp_clean_number = ''.join(filter(str.isdigit, temp_remote_jid))
+            if not any(admin in temp_clean_number for admin in ALL_ADMINS):
+                return {"status": "ignored", "reason": "outgoing_to_non_admin"}
+            # Removido a exigência de começar com '/' para que comandos naturais funcionem
+
+        message_id = data.get("key", {}).get("id")
+
+        # Deduplicação O(1)
+        if message_id:
+            if message_id in _processed_ids_set:
+                return {"status": "ignored", "reason": "duplicate_message"}
+            if len(_processed_ids_queue) >= _processed_ids_queue.maxlen:
+                oldest = _processed_ids_queue[0]
+                _processed_ids_set.discard(oldest)
+            _processed_ids_queue.append(message_id)
+            _processed_ids_set.add(message_id)
+
+        remote_jid = data.get("key", {}).get("remoteJid", "")
+        sender_pn = data.get("key", {}).get("senderPn")
+
+        # Resolve @lid para número real
+        if sender_pn and "@lid" in remote_jid:
+            remote_jid = sender_pn
+
+        if "@s.whatsapp.net" in remote_jid:
+            remote_jid = remote_jid.replace("@s.whatsapp.net", "")
+
+        if not remote_jid or "status@broadcast" in remote_jid:
+            return {"status": "ignored", "reason": "invalid_jid"}
+
+        # Extrai texto da mensagem
+        conversation = message_info.get("conversation")
+        extended_text = message_info.get("extendedTextMessage", {}).get("text")
+        image_caption = message_info.get("imageMessage", {}).get("caption")
+        msg_text = conversation or extended_text or image_caption or ""
+
+        is_group = "@g.us" in remote_jid
+        clean_number = ''.join(filter(str.isdigit, remote_jid))
+
+        # Números autorizados a ter conversas/mídias salvas:
+        # admins masters, admins padrão e contatos de contatos.json.
+        allowed_numbers = load_allowed_numbers()
+        is_allowed_to_log = any(num in clean_number for num in allowed_numbers) and not is_group
+
+        # Extrai mídia inline (base64) — só salva em disco se for número autorizado
+        img_path = None
+        contact_clean = re.sub(r'[^a-zA-Z0-9]', '_', remote_jid.split('@')[0])
+        base64_data = data.get("message", {}).get("base64")
+        if base64_data:
+            if is_allowed_to_log:
+                img_bytes = base64.b64decode(base64_data)
+                today_str = datetime.now().strftime("%Y-%m-%d")
+                f_path = LOGS_DIR / today_str / "midias_recebidas"
+                f_path.mkdir(parents=True, exist_ok=True)
+                img_file = f_path / f"{contact_clean}_{int(time.time())}_{uuid.uuid4().hex[:4]}_thumb.jpg"
+                with open(img_file, "wb") as f:
+                    f.write(img_bytes)
+                img_path = str(img_file)
+            if not msg_text:
+                msg_text = "[Mídia Base64 Inline]"
+
+        # Verifica se não tem texto nem mídia
+        if not msg_text and not img_path:
+            keys = data.get("message", {}).keys()
+            if "reactionMessage" in keys or "protocolMessage" in keys:
+                return {"status": "ignored", "reason": "system_or_reaction_message"}
+            if any("Message" in k for k in keys):
+                msg_text = f"[Mídia: {list(keys)}]"
+            else:
+                return {"status": "ignored", "reason": "empty_text_and_media"}
+
+        # Só salva no stealth log conversas de números autorizados.
+        if is_allowed_to_log:
+            background_tasks.add_task(process_stealth_message, data, remote_jid, msg_text, img_path)
+
+        # Timeout: ignora mensagens com mais de 1 hora
+        msg_timestamp = data.get("messageTimestamp")
+        if msg_timestamp:
+            diff = int(time.time()) - int(msg_timestamp)
+            if diff > 3600:
+                print(f"[TIMEOUT] Mensagem ignorada ({diff}s atrás). Remetente: {clean_number}")
+                return {"status": "ignored", "reason": "message_too_old"}
+
+        # Verifica se o remetente (ou destinatário no caso de fromMe=True) é um admin
+        is_admin = any(admin in clean_number for admin in ALL_ADMINS)
+
+        # Se não for admin e não for grupo, apenas ignora silenciosamente.
+        if not is_admin and not is_group:
+            return {"status": "success", "reason": "unauthorized_redirected"}
+
+        # Ignora grupos
+        if is_group:
+            return {"status": "success"}
+
+        if msg_text and ("/video" in msg_text.lower() or "/vídeo" in msg_text.lower()):
+            print(f"[ROTEAMENTO] Comando de Vídeo Desktop solicitado por {clean_number}.")
+            from tools.desktop_call import iniciar_chamada_desktop
+            background_tasks.add_task(iniciar_chamada_desktop, clean_number)
+            
+            # Remove o comando /video ou /vídeo do texto para que o restante (ex: "crie um site") seja processado
+            msg_text = re.sub(r'(?i)/v[ií]deo\s*', '', msg_text).strip()
+            if not msg_text and not img_path:
+                return {"status": "success", "reason": "desktop_video_call"}
+
+        # Processa mensagem de admin (apenas comandos) em paralelo
+        async def background_admin(r_jid, text_content, initial_img):
+            try:
+                await process_admin_message(r_jid, text_content, initial_img)
+            except Exception as e:
+                print(f"[ERRO] Background admin: {e}")
+                await send_text_message(r_jid, f"⚠️ Erro: {e}")
+
+        asyncio.create_task(
+            background_admin(remote_jid, msg_text, img_path)
+        )
+
+        return {"status": "success"}
+
+    except Exception as e:
+        print(f"Erro no webhook: {e}")
+        return {"status": "error", "detail": str(e)}
+
+
+# ================= INICIALIZAÇÃO =================
+if __name__ == "__main__":
+    print(f"🌐 Servidor rodando em http://0.0.0.0:{SERVER_PORT}")
+    print(f"📊 Dashboard: http://localhost:{SERVER_PORT}/dashboard")
+    print(f"📱 QR Code:   http://localhost:{SERVER_PORT}/qrcode")
+    uvicorn.run(app, host="0.0.0.0", port=SERVER_PORT)

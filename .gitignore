@@ -1,0 +1,31 @@
+# Credenciais e ambiente (NUNCA subir)
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+
+# Dados da Evolution API / Docker
+evolution_db_data/
+evolution_redis_data/
+evolution_instances/
+evolution_database/
+node_modules/
+
+# Mídias, logs e dados locais
+temp_media/
+logs/
+*.log
+history.json
+projects/
+
+# Prints temporários
+print_temp.png
+print_tela_*.png
+webcam_temp_*.jpg
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
