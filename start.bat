@@ -11,8 +11,8 @@ echo ==============================================
 tasklist /fi "imagename eq Docker Desktop.exe" | find /i "Docker Desktop.exe" >nul
 if errorlevel 1 (
     echo Docker Desktop nao esta rodando. Tentando abrir...
-    if exist "C:\Program Files\Docker\Docker\Docker Desktop.exe" (
-        start "" "C:\Program Files\Docker\Docker\Docker Desktop.exe"
+    if exist "C:\Users\sergio.ribas\AppData\Local\Programs\DockerDesktop\Docker Desktop.exe" (
+        start "" "C:\Users\sergio.ribas\AppData\Local\Programs\DockerDesktop\Docker Desktop.exe"
     ) else (
         echo AVISO: Nao foi possivel encontrar o atalho padrao do Docker Desktop.
         echo Se o Docker ja estiver configurado no WSL ou como servico, aguardaremos...

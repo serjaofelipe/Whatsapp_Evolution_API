@@ -429,7 +429,7 @@ async def process_whatsbot_command(remote_jid: str, text: str) -> bool:
         elif comando_base == '/msg':
             if argumento:
                 await send_text_message(remote_jid, f"Exibindo alerta no {SISTEMA_ATUAL}...")
-                pyautogui.alert(text=argumento, title='MENSAGEM DO DONO', button='OK')
+                asyncio.create_task(asyncio.to_thread(pyautogui.alert, text=argumento, title='MENSAGEM', button='OK'))
             else:
                 await send_text_message(remote_jid, "⚠️ Use: /msg <texto>")
 

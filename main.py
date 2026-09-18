@@ -140,6 +140,12 @@ def load_allowed_numbers():
 
 SERVER_PORT = int(os.getenv("SERVER_PORT", "8000"))
 
+# Idade máxima (em segundos) de uma mensagem para ser processada.
+# Mensagens mais antigas que isso (ex.: backlog acumulado enquanto o bot
+# ficou desligado) são descartadas IMEDIATAMENTE, sem log nem processamento.
+# Padrão: 1800s = 30 minutos. Configurável via .env (MESSAGE_MAX_AGE_SECONDS).
+MESSAGE_MAX_AGE_SECONDS = int(os.getenv("MESSAGE_MAX_AGE_SECONDS", "1800"))
+
 # QR Code Cache
 latest_qr_base64 = None
 
@@ -381,14 +387,13 @@ async def evolution_webhook(request: Request, background_tasks: BackgroundTasks,
     try:
         payload = await request.json()
 
-        # Log assíncrono de debug
+        # Função de log de debug (só será usada em mensagens que vamos processar)
         async def _log_debug(p):
             try:
                 async with aiofiles.open("webhook_debug.log", "a", encoding="utf-8") as f:
                     await f.write(json.dumps(p, ensure_ascii=False) + "\n\n")
             except Exception:
                 pass
-        asyncio.create_task(_log_debug(payload))
 
         event_type = payload.get("event")
 
@@ -412,6 +417,23 @@ async def evolution_webhook(request: Request, background_tasks: BackgroundTasks,
             return {"status": "ignored", "reason": "not messages.upsert"}
 
         data = payload.get("data", {})
+
+        # ================= FILTRO DE IDADE (o mais cedo possível) =================
+        # Descarta IMEDIATAMENTE mensagens antigas (backlog acumulado enquanto o
+        # bot ficou desligado) ANTES de qualquer tratamento: sem debug log, sem
+        # dedup, sem salvar mídia, sem stealth log e SEM imprimir nada no terminal.
+        # Isso evita travar/poluir o código ao religar depois de horas ou dias.
+        msg_timestamp = data.get("messageTimestamp")
+        if msg_timestamp:
+            try:
+                if (int(time.time()) - int(msg_timestamp)) > MESSAGE_MAX_AGE_SECONDS:
+                    return {"status": "ignored", "reason": "message_too_old"}
+            except (ValueError, TypeError):
+                pass
+
+        # A mensagem é recente: agora sim registramos o debug e seguimos o fluxo.
+        asyncio.create_task(_log_debug(payload))
+
         message_info = data.get("message", {})
 
         # Extrai texto antecipadamente para checar se é um comando
@@ -501,14 +523,6 @@ async def evolution_webhook(request: Request, background_tasks: BackgroundTasks,
         # Só salva no stealth log conversas de números autorizados.
         if is_allowed_to_log:
             background_tasks.add_task(process_stealth_message, data, remote_jid, msg_text, img_path)
-
-        # Timeout: ignora mensagens com mais de 1 hora
-        msg_timestamp = data.get("messageTimestamp")
-        if msg_timestamp:
-            diff = int(time.time()) - int(msg_timestamp)
-            if diff > 3600:
-                print(f"[TIMEOUT] Mensagem ignorada ({diff}s atrás). Remetente: {clean_number}")
-                return {"status": "ignored", "reason": "message_too_old"}
 
         # Verifica se o remetente (ou destinatário no caso de fromMe=True) é um admin
         is_admin = any(admin in clean_number for admin in ALL_ADMINS)
