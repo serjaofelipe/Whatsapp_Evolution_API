@@ -2,6 +2,7 @@
 title WhatsApp Template Atlas Startup Script
 color 0A
 chcp 65001 >nul
+cd /d "%~dp0"
 
 echo ==============================================
 echo [1/4] Iniciando o Docker Desktop...
@@ -11,10 +12,12 @@ echo ==============================================
 tasklist /fi "imagename eq Docker Desktop.exe" | find /i "Docker Desktop.exe" >nul
 if errorlevel 1 (
     echo Docker Desktop nao esta rodando. Tentando abrir...
-    if exist "C:\Users\sergio.ribas\AppData\Local\Programs\DockerDesktop\Docker Desktop.exe" (
-        start "" "C:\Users\sergio.ribas\AppData\Local\Programs\DockerDesktop\Docker Desktop.exe"
+    if exist "%LOCALAPPDATA%\Programs\DockerDesktop\Docker Desktop.exe" (
+        start "" "%LOCALAPPDATA%\Programs\DockerDesktop\Docker Desktop.exe"
+    ) else if exist "%ProgramFiles%\Docker\Docker\Docker Desktop.exe" (
+        start "" "%ProgramFiles%\Docker\Docker\Docker Desktop.exe"
     ) else (
-        echo AVISO: Nao foi possivel encontrar o atalho padrao do Docker Desktop.
+        echo AVISO: Nao foi possivel encontrar o Docker Desktop.
         echo Se o Docker ja estiver configurado no WSL ou como servico, aguardaremos...
     )
 ) else (
@@ -31,11 +34,31 @@ if %errorlevel% neq 0 (
     goto LOOP_DOCKER
 )
 
+python --version >nul 2>&1
+if %errorlevel% neq 0 (
+    echo ERRO: Python nao encontrado no sistema!
+    echo Certifique-se de que o Python esta instalado e no PATH.
+    pause
+    exit /b
+)
+
 echo.
 echo ==============================================
-echo [2/4] Docker ativo! Subindo os containers...
+echo [2/4] Docker ativo! Verificando portas e subindo os containers...
 echo ==============================================
-cd /d "%~dp0"
+:: Escolhe portas livres e um nome de projeto proprio desta pasta (grava no .env)
+python setup_env.py
+if %errorlevel% equ 2 (
+    echo.
+    echo Nada a fazer: este bot ja esta aberto em outra janela.
+    pause
+    exit /b
+)
+if %errorlevel% neq 0 (
+    echo ERRO ao preparar o ambiente. Veja a mensagem acima.
+    pause
+    exit /b
+)
 
 :: Tenta rodar docker compose (nova sintaxe)
 docker compose up -d
@@ -56,16 +79,11 @@ echo.
 echo ==============================================
 echo [4/4] Iniciando o Gateway do WhatsApp...
 echo ==============================================
-python --version >nul 2>&1
-if %errorlevel% neq 0 (
-    echo ERRO: Python nao encontrado no sistema!
-    echo Certifique-se de que o Python esta instalado e no PATH.
-    pause
-    exit /b
-)
-
 echo Verificando dependencias basicas...
-pip install -r requirements.txt >nul 2>&1
+python -m pip install -q --disable-pip-version-check -r requirements.txt
+if %errorlevel% neq 0 (
+    echo AVISO: falha ao instalar dependencias. Veja o erro acima.
+)
 
 echo Tudo pronto! Iniciando o servidor...
 echo ==============================================

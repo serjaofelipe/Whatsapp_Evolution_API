@@ -30,8 +30,18 @@ fi
 
 echo ""
 echo "=============================================="
-echo "[2/4] Subindo os containers..."
+echo "[2/4] Verificando portas e subindo os containers..."
 echo "=============================================="
+
+# Escolhe portas livres e um nome de projeto proprio desta pasta (grava no .env)
+PYTHON=python3
+command -v python3 >/dev/null 2>&1 || PYTHON=python
+$PYTHON setup_env.py
+case $? in
+    0) ;;
+    2) echo "Nada a fazer: este bot ja esta aberto em outra janela."; read -r -p "Pressione ENTER para sair..."; exit 0 ;;
+    *) echo "ERRO ao preparar o ambiente. Veja a mensagem acima."; read -r -p "Pressione ENTER para sair..."; exit 1 ;;
+esac
 
 # Tenta a sintaxe nova; se falhar, tenta a antiga
 if ! docker compose up -d; then
@@ -62,7 +72,7 @@ else
 fi
 
 echo "Verificando dependencias basicas..."
-$PYTHON -m pip install -r requirements.txt >/dev/null 2>&1
+$PYTHON -m pip install -q --disable-pip-version-check -r requirements.txt || echo "AVISO: falha ao instalar dependencias. Veja o erro acima."
 
 echo "Tudo pronto! Iniciando o servidor..."
 echo "=============================================="

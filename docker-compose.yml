@@ -1,14 +1,14 @@
-version: '3.8'
-
 services:
   evolution-api:
     image: evoapicloud/evolution-api:latest
-    container_name: evolution_api_template
     restart: always
+    # Porta escolhida pelo setup_env.py (livre na máquina), só acessível localmente.
     ports:
-      - "8080:8080"
+      - "127.0.0.1:${EVOLUTION_PORT:-8080}:8080"
+    # Aplica a correção da Baileys (docker/patch-baileys.sh) antes de iniciar.
+    entrypoint: ["/bin/bash", "-c", "sh /patches/patch-baileys.sh; . ./Docker/scripts/deploy_database.sh && npm run start:prod"]
     environment:
-      - SERVER_URL=http://localhost:8080
+      - SERVER_URL=http://localhost:${EVOLUTION_PORT:-8080}
       - AUTHENTICATION_API_KEY=${AUTHENTICATION_API_KEY:-MUDE_ESTA_CHAVE}
       - DATABASE_PROVIDER=postgresql
       - DATABASE_CONNECTION_URI=postgresql://postgres:postgres@postgres:5432/evolution?schema=public
@@ -16,8 +16,8 @@ services:
       - REDIS_URI=redis://redis:6379/1
       - CACHE_REDIS_ENABLED=true
       - CACHE_REDIS_URI=redis://redis:6379/6
-      - WEBHOOK_GLOBAL_URL=http://host.docker.internal:8000/webhook/evolution
-      - WEBHOOK_GLOBAL_ENABLED=true
+      - WEBHOOK_GLOBAL_URL=http://host.docker.internal:${SERVER_PORT:-8000}/webhook/evolution
+      - WEBHOOK_GLOBAL_ENABLED=false
       - WEBHOOK_GLOBAL_UNREAD_MESSAGE=false
       - WEBHOOK_EVENTS_APPLICATION_STARTUP=false
       - WEBHOOK_EVENTS_MESSAGE_UPSERT=true
@@ -49,6 +49,7 @@ services:
         condition: service_started
     volumes:
       - ./evolution_instances:/evolution/instances
+      - ./docker/patch-baileys.sh:/patches/patch-baileys.sh:ro
     deploy:
       resources:
         limits:
@@ -64,14 +65,11 @@ services:
 
   postgres:
     image: postgres:15
-    container_name: evolution_postgres_template
     restart: always
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_DB=evolution
-    ports:
-      - "5432:5432"
     volumes:
       - ./evolution_db_data:/var/lib/postgresql/data
     command: >
@@ -97,10 +95,7 @@ services:
 
   redis:
     image: redis:alpine
-    container_name: evolution_redis_template
     restart: always
-    ports:
-      - "6379:6379"
     volumes:
       - ./evolution_redis_data:/data
     command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru --save 60 1

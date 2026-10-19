@@ -37,6 +37,19 @@ Antes de rodar o projeto em uma máquina nova (Windows ou Mac), você **precisa 
   > No macOS, para o `/print` e `/foto` funcionarem, conceda ao Terminal permissão de
   > **Gravação de Tela** e **Câmera** em Ajustes do Sistema → Privacidade e Segurança.
 
+## 🔁 Várias cópias (mesma máquina ou outras máquinas)
+
+O `start.bat` / `start.command` roda o `setup_env.py` antes de subir o Docker:
+
+- Se a porta do bot (8000) ou da Evolution API (8080) estiver ocupada, usa a próxima livre e grava no `.env`.
+- Cada pasta ganha um nome de projeto Docker próprio (`COMPOSE_PROJECT_NAME`), então uma cópia não mexe nos containers da outra.
+- Se o mesmo bot já estiver aberto, avisa e não sobe outro.
+
+Ao levar o projeto para outra máquina/pasta, copie **só o código**. Não copie `.env`,
+`evolution_db_data/`, `evolution_instances/`, `evolution_redis_data/` nem `logs/` —
+eles contêm a sessão do WhatsApp e duas cópias com a mesma sessão brigam entre si.
+Use **um número de WhatsApp por cópia**.
+
 ## 📁 Estrutura
 
 - `main.py` - Servidor principal (FastAPI + Uvicorn)
@@ -48,6 +61,8 @@ Antes de rodar o projeto em uma máquina nova (Windows ou Mac), você **precisa 
 - `static/` - Frontend do Dashboard
 - `templates/` - Template do QR Code
 - `docker-compose.yml` - Docker para Evolution API
+- `setup_env.py` - Gera o `.env` e escolhe portas livres antes de subir o Docker
+- `docker/patch-baileys.sh` - Correção da Baileys aplicada ao iniciar o container
 
 ## 💬 Comandos
 

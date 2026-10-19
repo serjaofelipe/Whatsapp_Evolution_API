@@ -39,47 +39,19 @@ if sys.platform == "win32":
     except Exception as e:
         print(f"Aviso: Nao foi possivel desabilitar o QuickEdit Mode: {e}")
 
-import secrets
 from dotenv import load_dotenv
 
 # Auto-geração do .env antes das importações locais
 BASE_DIR = Path(__file__).resolve().parent
 env_path = BASE_DIR / ".env"
 if not env_path.exists():
-    new_key = secrets.token_hex(16).upper()
-    default_env = f"""# ==========================================
-# GERAÇÃO AUTOMÁTICA DE AMBIENTE (Template)
-# ==========================================
-
-# Evolution API
-SERVER_PORT=8000
-EVOLUTION_API_URL=http://localhost:8080
-INSTANCE_NAME=Atlas
-AUTHENTICATION_API_KEY={new_key}
-GLOBAL_API_KEY={new_key}
-
-# WhatsApp Admins
-ADMIN_NUMBERS=
-ADMIN_MASTER_NUMBERS=
-"""
-    with open(env_path, "w", encoding="utf-8") as f:
-        f.write(default_env)
-    print("\n" + "="*50)
-    print("✅ ARQUIVO .env GERADO AUTOMATICAMENTE!")
-    print(f"🔑 Evolution API Key: {new_key}")
-    
-    print("🔄 Reiniciando container da Evolution API para aplicar a chave...")
+    # Normalmente o start.bat já fez isso; aqui cobre quem roda "python main.py" direto.
+    # O setup_env escolhe chave, portas livres e nome do projeto Docker.
     import subprocess
-    try:
-        subprocess.run(["docker-compose", "down"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        subprocess.run(["docker-compose", "up", "-d"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        print("✅ Docker reiniciado com sucesso com a nova chave!")
-    except Exception as e:
-        print(f"⚠️ Aviso: Não foi possível reiniciar o Docker automaticamente: {e}")
-        print("   Por favor, abra outro terminal e rode manualmente:")
-        print("   docker-compose down")
-        print("   docker-compose up -d")
-    print("="*50 + "\n")
+    import setup_env
+    setup_env.main()
+    print("🔄 Subindo os containers da Evolution API com a nova configuração...")
+    subprocess.run(["docker", "compose", "up", "-d"], cwd=BASE_DIR, check=False)
 
 load_dotenv()
 
@@ -139,6 +111,9 @@ def load_allowed_numbers():
     return list(set(numeros))
 
 SERVER_PORT = int(os.getenv("SERVER_PORT", "8000"))
+# URL que a Evolution API (dentro do Docker) usa para entregar eventos a este bot.
+WEBHOOK_URL = f"http://host.docker.internal:{SERVER_PORT}/webhook/evolution"
+WEBHOOK_EVENTS = ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "QRCODE_UPDATED", "SEND_MESSAGE"]
 
 # Idade máxima (em segundos) de uma mensagem para ser processada.
 # Mensagens mais antigas que isso (ex.: backlog acumulado enquanto o bot
@@ -152,6 +127,31 @@ latest_qr_base64 = None
 # Deduplicador de mensagens O(1) com set + deque limitado
 _processed_ids_set = set()
 _processed_ids_queue = deque(maxlen=500)
+
+
+async def sync_instance_webhook():
+    """Garante que o webhook da instância aponte para a porta atual deste bot
+    (a porta pode mudar quando o setup_env encontra a anterior ocupada)."""
+    import httpx
+    headers = {"apikey": GLOBAL_API_KEY}
+    for _ in range(30):  # a Evolution pode demorar para subir
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                r = await client.get(f"{EVOLUTION_API_URL}/webhook/find/{INSTANCE_NAME}", headers=headers)
+                if r.status_code == 404:
+                    return  # instância ainda não existe; /api/status cria com o webhook certo
+                if r.status_code == 200:
+                    current = r.json() or {}
+                    if current.get("url") != WEBHOOK_URL or not current.get("enabled"):
+                        await client.post(f"{EVOLUTION_API_URL}/webhook/set/{INSTANCE_NAME}", json={
+                            "webhook": {"enabled": True, "url": WEBHOOK_URL, "events": WEBHOOK_EVENTS}
+                        }, headers=headers)
+                        print(f"🔗 Webhook da instância atualizado para {WEBHOOK_URL}")
+                    return
+        except Exception:
+            pass
+        await asyncio.sleep(5)
+    print("⚠️ Não foi possível conferir o webhook da instância na Evolution API.")
 
 
 # ================= LIFESPAN =================
@@ -176,6 +176,7 @@ async def lifespan(app: FastAPI):
                 print(f"[Startup] Erro ao enviar mensagem para {admin}: {e}")
 
     asyncio.create_task(send_startup())
+    asyncio.create_task(sync_instance_webhook())
     yield
     print("🛑 WhatsAjax - Encerrando...")
 
@@ -247,6 +248,11 @@ async def get_qr():
     except Exception as e:
         return {"error": f"Erro QR: {str(e)}"}
 
+@app.get("/api/instance-info")
+async def instance_info():
+    """Usado pelo setup_env.py para saber se este bot (desta pasta) já está rodando."""
+    return {"base_dir": str(BASE_DIR), "instance": INSTANCE_NAME, "port": SERVER_PORT}
+
 @app.get("/api/status")
 async def get_status():
     import httpx
@@ -267,8 +273,8 @@ async def get_status():
                 await client.post(webhook_url, json={
                     "webhook": {
                         "enabled": True,
-                        "url": "http://host.docker.internal:8000/webhook/evolution",
-                        "events": ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "QRCODE_UPDATED", "SEND_MESSAGE"]
+                        "url": WEBHOOK_URL,
+                        "events": WEBHOOK_EVENTS
                     }
                 }, headers=headers)
                 

@@ -11,3 +11,4 @@ speedtest-cli
 requests
 python-multipart
 mss
+jinja2

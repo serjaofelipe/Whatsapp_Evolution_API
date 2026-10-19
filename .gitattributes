@@ -1,0 +1,5 @@
+# Scripts que rodam no Linux/Mac (incluindo dentro do container) precisam de LF;
+# o .bat do Windows precisa de CRLF.
+*.sh      text eol=lf
+*.command text eol=lf
+*.bat     text eol=crlf
